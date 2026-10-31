@@ -24,5 +24,35 @@
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
-  "exclude": ["dist"]
+  "include": [
+    "src/App.tsx",
+    "src/main.tsx",
+    "src/firebase.ts",
+    "src/context/**/*",
+    "src/components/BrandEditModal.tsx",
+    "src/components/CalendarView.tsx",
+    "src/components/ChartsView.tsx",
+    "src/components/CycleIncomeChart.tsx",
+    "src/components/HolidayCalendar.tsx",
+    "src/components/MainLeaveSummary.tsx",
+    "src/components/MainMetricsCards.tsx",
+    "src/components/Navbar.tsx",
+    "src/components/OTShareCard.tsx",
+    "src/components/PaySlipModal.tsx",
+    "src/components/RecordModal.tsx",
+    "src/components/SalaryIncrementSection.tsx",
+    "src/components/SettingsModal.tsx",
+    "src/components/TimesheetTable.tsx",
+    "src/components/UserAuthButton.tsx",
+    "src/components/YearlyDashboard.tsx",
+    "src/components/YearlyLeaveView.tsx",
+    "src/data/**/*",
+    "src/services/firestoreSync.ts",
+    "src/types/**/*",
+    "src/utils/**/*"
+  ],
+  "exclude": [
+    "dist",
+    "node_modules"
+  ]
 }
