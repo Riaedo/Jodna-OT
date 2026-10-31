@@ -29,6 +29,13 @@ import { CycleIncomeChart } from './components/CycleIncomeChart';
 import { YearlyDashboard } from './components/YearlyDashboard';
 import { useAuth } from './context/AuthContext';
 import { 
+  clearOtAppLocalStorage,
+  cleanStartUserCloudData,
+  subscribeUserProfile,
+  subscribeUserSettings,
+  subscribeUserCycles,
+  subscribeUserHolidays,
+  subscribeUserSalaryIncrements,
   saveUserSettings, 
   fetchUserSettings, 
   saveUserCycle, 
@@ -282,80 +289,136 @@ export default function App() {
 
   const { user, setSyncStatus } = useAuth();
   const isInitialSyncDone = useRef(false);
+  const isRemoteUpdate = useRef(false);
 
-  // Load user data from Firebase Firestore upon login
+  // Setup Real-time Listeners (onSnapshot) and Cloud-Driven Local Reset
   useEffect(() => {
     if (!user) {
       isInitialSyncDone.current = false;
       return;
     }
 
-    let isMounted = true;
-    const loadCloudData = async () => {
-      try {
-        setSyncStatus('saving');
-        
-        // 1. Settings
-        const remoteSettings = await fetchUserSettings(user.uid);
-        if (remoteSettings && isMounted) {
+    setSyncStatus('saving');
+    let isSubscribed = true;
+
+    // Check if initial one-time clean start should run for current user session
+    const performInitialCleanStartIfNeeded = async () => {
+      const cleanKey = `ot_app_clean_v1_${user.uid}`;
+      if (localStorage.getItem(cleanKey) !== 'completed') {
+        console.log('Executing approved Clean Start for UID:', user.uid);
+        try {
+          await cleanStartUserCloudData(user.uid);
+          localStorage.setItem(cleanKey, 'completed');
+          isRemoteUpdate.current = true;
+          setSettings(DEFAULT_SETTINGS);
+          setAllCycleRecords({});
+          setCycleTaxes({});
+          setHolidays([]);
+          setSalaryIncrements([]);
+          showToast('ล้างข้อมูลเริ่มต้นใหม่ (Clean Start) บน Cloud สำเร็จ');
+        } catch (cleanErr) {
+          console.error('Clean start initial error:', cleanErr);
+        }
+      }
+    };
+    performInitialCleanStartIfNeeded();
+
+    // 1. Profile listener (Cloud-Driven Local Reset across devices)
+    const unsubProfile = subscribeUserProfile(
+      user.uid,
+      (resetVersion) => {
+        if (!isSubscribed) return;
+        const currentLocalReset = localStorage.getItem('ot_app_applied_reset_version');
+        if (resetVersion && currentLocalReset !== resetVersion) {
+          console.log(`Cloud-driven reset detected: ${resetVersion}`);
+          isRemoteUpdate.current = true;
+          clearOtAppLocalStorage();
+          localStorage.setItem('ot_app_applied_reset_version', resetVersion);
+          setSettings(DEFAULT_SETTINGS);
+          setAllCycleRecords({});
+          setCycleTaxes({});
+          setHolidays([]);
+          setSalaryIncrements([]);
+          showToast('ซิงค์สถานะเริ่มต้นใหม่ (Clean Start) จาก Cloud สำเร็จ');
+        }
+      },
+      (err) => console.error('Profile listener error:', err)
+    );
+
+    // 2. Settings Real-time listener
+    const unsubSettings = subscribeUserSettings(
+      user.uid,
+      (remoteSettings) => {
+        if (!isSubscribed) return;
+        if (remoteSettings) {
+          isRemoteUpdate.current = true;
           setSettings((prev) => ({
             ...prev,
             ...remoteSettings,
             yearlyVacationQuotas: remoteSettings.yearlyVacationQuotas || prev.yearlyVacationQuotas,
           }));
-        } else if (isMounted) {
-          await saveUserSettings(user.uid, settings);
         }
+        setSyncStatus('synced');
+      },
+      (err) => console.error('Settings listener error:', err)
+    );
 
-        // 2. Cycles & Taxes
-        const { cycles: remoteCycles, cycleTaxes: remoteTaxes } = await fetchUserCycles(user.uid);
-        if (isMounted) {
-          if (Object.keys(remoteCycles).length > 0) {
-            setAllCycleRecords((prev) => ({
-              ...prev,
-              ...remoteCycles,
-            }));
-          }
-          if (Object.keys(remoteTaxes).length > 0) {
-            setCycleTaxes((prev) => ({
-              ...prev,
-              ...remoteTaxes,
-            }));
-          }
-        }
+    // 3. Cycles & Taxes Real-time listener
+    const unsubCycles = subscribeUserCycles(
+      user.uid,
+      (remoteCycles, remoteTaxes) => {
+        if (!isSubscribed) return;
+        isRemoteUpdate.current = true;
+        setAllCycleRecords(remoteCycles);
+        setCycleTaxes(remoteTaxes);
+        setSyncStatus('synced');
+      },
+      (err) => console.error('Cycles listener error:', err)
+    );
 
-        // 3. Holidays
-        const remoteHolidays = await fetchUserHolidays(user.uid);
-        if (isMounted && remoteHolidays && remoteHolidays.length > 0) {
-          setHolidays(remoteHolidays);
-        }
+    // 4. Holidays Real-time listener
+    const unsubHolidays = subscribeUserHolidays(
+      user.uid,
+      (remoteHolidays) => {
+        if (!isSubscribed) return;
+        isRemoteUpdate.current = true;
+        setHolidays(remoteHolidays);
+        setSyncStatus('synced');
+      },
+      (err) => console.error('Holidays listener error:', err)
+    );
 
-        // 4. Salary Increments
-        const remoteIncrements = await fetchUserSalaryIncrements(user.uid);
-        if (isMounted && remoteIncrements && remoteIncrements.length > 0) {
-          setSalaryIncrements(remoteIncrements);
-        }
+    // 5. Salary Increments Real-time listener
+    const unsubIncrements = subscribeUserSalaryIncrements(
+      user.uid,
+      (remoteIncrements) => {
+        if (!isSubscribed) return;
+        isRemoteUpdate.current = true;
+        setSalaryIncrements(remoteIncrements);
+        setSyncStatus('synced');
+      },
+      (err) => console.error('Salary increments listener error:', err)
+    );
 
-        if (isMounted) {
-          isInitialSyncDone.current = true;
-          setSyncStatus('synced');
-        }
-      } catch (err) {
-        console.error('Failed to load cloud data:', err);
-        if (isMounted) setSyncStatus('error');
-      }
-    };
-
-    loadCloudData();
+    isInitialSyncDone.current = true;
 
     return () => {
-      isMounted = false;
+      isSubscribed = false;
+      unsubProfile();
+      unsubSettings();
+      unsubCycles();
+      unsubHolidays();
+      unsubIncrements();
     };
   }, [user]);
 
   // Sync settings to Firestore
   useEffect(() => {
     if (!user || !isInitialSyncDone.current) return;
+    if (isRemoteUpdate.current) {
+      isRemoteUpdate.current = false;
+      return;
+    }
     setSyncStatus('saving');
     const timer = setTimeout(async () => {
       try {
@@ -372,6 +435,10 @@ export default function App() {
   // Sync salary increments to Firestore
   useEffect(() => {
     if (!user || !isInitialSyncDone.current) return;
+    if (isRemoteUpdate.current) {
+      isRemoteUpdate.current = false;
+      return;
+    }
     setSyncStatus('saving');
     const timer = setTimeout(async () => {
       try {
@@ -388,6 +455,10 @@ export default function App() {
   // Sync holidays to Firestore
   useEffect(() => {
     if (!user || !isInitialSyncDone.current) return;
+    if (isRemoteUpdate.current) {
+      isRemoteUpdate.current = false;
+      return;
+    }
     setSyncStatus('saving');
     const timer = setTimeout(async () => {
       try {
@@ -650,25 +721,43 @@ export default function App() {
     setIsResetConfirmModalOpen(true);
   };
 
-  const handleConfirmResetAndStartFresh = (startDate: string) => {
+  const handleConfirmResetAndStartFresh = async (startDate: string) => {
     const updatedSettings: PayrollSettings = {
-      ...settings,
+      ...DEFAULT_SETTINGS,
       workStartDate: startDate,
     };
+
+    if (user) {
+      setSyncStatus('saving');
+      try {
+        await cleanStartUserCloudData(user.uid);
+        if (startDate && startDate.trim() !== '') {
+          await saveUserSettings(user.uid, updatedSettings);
+        }
+        setSyncStatus('synced');
+      } catch (err) {
+        console.error('Clean start failed:', err);
+      }
+    } else {
+      clearOtAppLocalStorage();
+    }
+
     setSettings(updatedSettings);
 
     // ล้างข้อมูลทุกรอบให้สะอาด 0 OT
     if (startDate && startDate.trim() !== '') {
-      const freshCycle = createCycleRecords(targetYear, targetMonth, updatedSettings, holidays);
+      const freshCycle = createCycleRecords(targetYear, targetMonth, updatedSettings, []);
       setAllCycleRecords({
         [cycleKey]: freshCycle,
       });
     } else {
       setAllCycleRecords({});
     }
+    setHolidays([]);
+    setSalaryIncrements([]);
     setCycleTaxes({});
     setIsResetConfirmModalOpen(false);
-    showToast(startDate ? `ลบข้อมูลทั้งหมดแล้ว เริ่มบันทึกใหม่ตั้งแต่วันที่ ${startDate}` : 'ลบข้อมูลและคืนค่าระบบทั้งหมดเรียบร้อยแล้ว');
+    showToast(startDate ? `ล้างข้อมูลทั้งหมดแล้ว เริ่มบันทึกใหม่ตั้งแต่วันที่ ${startDate}` : 'ล้างข้อมูลทั้งหมด (Clean Start) เรียบร้อยแล้ว');
   };
 
   // Export CSV

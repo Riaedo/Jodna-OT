@@ -1,6 +1,6 @@
 {
-  "name": "Gemini Chat & Supabase Sync",
-  "description": "เว็บแอปแชท Gemini พร้อมระบบจัดเก็บและซิงค์ประวัติการสนทนาข้ามอุปกรณ์ (PC และ มือถือ) แบบ Real-time ผ่าน Supabase",
+  "name": "OT PayMaster - ระบบคำนวณโอทีและสลิปเงินเดือน",
+  "description": "ระบบคำนวณโอที ค่าล่วงเวลา จัดการกะ สิทธิ์วันลา และสลิปเงินเดือนอัตโนมัติ ซิงค์ข้อมูลผ่าน Firebase",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
