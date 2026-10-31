@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { DailyRecord, Holiday, PayrollSettings, AppView, SalaryIncrementRecord } from './types/overtime';
 import { 
   calculatePayroll, 
   createCycleRecords, 
-  isValidDateString,
+  isValidDateString, 
   formatCurrency, 
   getEffectiveSalaryForCycle,
   getCycleForDate,
@@ -27,6 +27,19 @@ import { PaySlipModal } from './components/PaySlipModal';
 import { BrandEditModal } from './components/BrandEditModal';
 import { CycleIncomeChart } from './components/CycleIncomeChart';
 import { YearlyDashboard } from './components/YearlyDashboard';
+import { useAuth } from './context/AuthContext';
+import { 
+  saveUserSettings, 
+  fetchUserSettings, 
+  saveUserCycle, 
+  fetchUserCycles, 
+  saveUserHolidays, 
+  fetchUserHolidays, 
+  saveUserSalaryIncrements, 
+  fetchUserSalaryIncrements,
+  deleteUserHoliday,
+  deleteUserSalaryIncrement
+} from './services/firestoreSync';
 import { 
   CheckCircle,
   RefreshCw,
@@ -267,11 +280,141 @@ export default function App() {
     }
   }, [cycleTaxes]);
 
+  const { user, setSyncStatus } = useAuth();
+  const isInitialSyncDone = useRef(false);
+
+  // Load user data from Firebase Firestore upon login
+  useEffect(() => {
+    if (!user) {
+      isInitialSyncDone.current = false;
+      return;
+    }
+
+    let isMounted = true;
+    const loadCloudData = async () => {
+      try {
+        setSyncStatus('saving');
+        
+        // 1. Settings
+        const remoteSettings = await fetchUserSettings(user.uid);
+        if (remoteSettings && isMounted) {
+          setSettings((prev) => ({
+            ...prev,
+            ...remoteSettings,
+            yearlyVacationQuotas: remoteSettings.yearlyVacationQuotas || prev.yearlyVacationQuotas,
+          }));
+        } else if (isMounted) {
+          await saveUserSettings(user.uid, settings);
+        }
+
+        // 2. Cycles & Taxes
+        const { cycles: remoteCycles, cycleTaxes: remoteTaxes } = await fetchUserCycles(user.uid);
+        if (isMounted) {
+          if (Object.keys(remoteCycles).length > 0) {
+            setAllCycleRecords((prev) => ({
+              ...prev,
+              ...remoteCycles,
+            }));
+          }
+          if (Object.keys(remoteTaxes).length > 0) {
+            setCycleTaxes((prev) => ({
+              ...prev,
+              ...remoteTaxes,
+            }));
+          }
+        }
+
+        // 3. Holidays
+        const remoteHolidays = await fetchUserHolidays(user.uid);
+        if (isMounted && remoteHolidays && remoteHolidays.length > 0) {
+          setHolidays(remoteHolidays);
+        }
+
+        // 4. Salary Increments
+        const remoteIncrements = await fetchUserSalaryIncrements(user.uid);
+        if (isMounted && remoteIncrements && remoteIncrements.length > 0) {
+          setSalaryIncrements(remoteIncrements);
+        }
+
+        if (isMounted) {
+          isInitialSyncDone.current = true;
+          setSyncStatus('synced');
+        }
+      } catch (err) {
+        console.error('Failed to load cloud data:', err);
+        if (isMounted) setSyncStatus('error');
+      }
+    };
+
+    loadCloudData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [user]);
+
+  // Sync settings to Firestore
+  useEffect(() => {
+    if (!user || !isInitialSyncDone.current) return;
+    setSyncStatus('saving');
+    const timer = setTimeout(async () => {
+      try {
+        await saveUserSettings(user.uid, settings);
+        setSyncStatus('synced');
+      } catch (e) {
+        console.error('Failed to sync settings:', e);
+        setSyncStatus('error');
+      }
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [settings, user]);
+
+  // Sync salary increments to Firestore
+  useEffect(() => {
+    if (!user || !isInitialSyncDone.current) return;
+    setSyncStatus('saving');
+    const timer = setTimeout(async () => {
+      try {
+        await saveUserSalaryIncrements(user.uid, salaryIncrements);
+        setSyncStatus('synced');
+      } catch (e) {
+        console.error('Failed to sync salary increments:', e);
+        setSyncStatus('error');
+      }
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [salaryIncrements, user]);
+
+  // Sync holidays to Firestore
+  useEffect(() => {
+    if (!user || !isInitialSyncDone.current) return;
+    setSyncStatus('saving');
+    const timer = setTimeout(async () => {
+      try {
+        await saveUserHolidays(user.uid, holidays);
+        setSyncStatus('synced');
+      } catch (e) {
+        console.error('Failed to sync holidays:', e);
+        setSyncStatus('error');
+      }
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [holidays, user]);
+
   const handleUpdateCycleTax = (cKey: string, val: number) => {
     setCycleTaxes((prev) => ({
       ...prev,
       [cKey]: val,
     }));
+    if (user && isInitialSyncDone.current) {
+      setSyncStatus('saving');
+      saveUserCycle(user.uid, cKey, allCycleRecords[cKey] || currentRecords, val)
+        .then(() => setSyncStatus('synced'))
+        .catch((e) => {
+          console.error(e);
+          setSyncStatus('error');
+        });
+    }
   };
 
   // Views ('timesheet' | 'calendar' | 'holidays' | 'leave' | 'dashboard')
@@ -373,14 +516,25 @@ export default function App() {
 
   // Update a single record (done through calendar)
   const handleUpdateRecord = (updated: DailyRecord) => {
+    let nextList: DailyRecord[] = [];
     setAllCycleRecords((prev) => {
       const existing = prev[cycleKey] || currentRecords;
       const updatedList = existing.map((r) => (r.id === updated.id ? updated : r));
+      nextList = updatedList;
       return {
         ...prev,
         [cycleKey]: updatedList,
       };
     });
+    if (user && isInitialSyncDone.current) {
+      setSyncStatus('saving');
+      saveUserCycle(user.uid, cycleKey, nextList, cycleTaxes[cycleKey])
+        .then(() => setSyncStatus('synced'))
+        .catch((e) => {
+          console.error(e);
+          setSyncStatus('error');
+        });
+    }
     showToast(`อัปเดตข้อมูลวันที่ ${updated.dayNumber} สำเร็จ`);
   };
 
@@ -410,6 +564,15 @@ export default function App() {
       ...prev,
       [cycleKey]: merged,
     }));
+    if (user && isInitialSyncDone.current) {
+      setSyncStatus('saving');
+      saveUserCycle(user.uid, cycleKey, merged, cycleTaxes[cycleKey])
+        .then(() => setSyncStatus('synced'))
+        .catch((e) => {
+          console.error(e);
+          setSyncStatus('error');
+        });
+    }
     showToast(`จัดตารางกะ ${settings.shiftGroup} สำเร็จ`);
   };
 
@@ -428,6 +591,9 @@ export default function App() {
 
   const handleDeleteHoliday = (id: string) => {
     setHolidays((prev) => prev.filter((h) => h.id !== id));
+    if (user && isInitialSyncDone.current) {
+      deleteUserHoliday(user.uid, id).catch(console.error);
+    }
     showToast('ลบวันหยุดสำเร็จ');
   };
 

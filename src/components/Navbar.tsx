@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { PayrollSettings, AppView } from '../types/overtime';
 import { renderAppIcon } from './BrandEditModal';
+import { UserAuthButton } from './UserAuthButton';
 
 interface NavbarProps {
   currentView: AppView;
@@ -485,6 +486,9 @@ export const Navbar: React.FC<NavbarProps> = ({
               แดชบอร์ด
             </button>
           </div>
+
+          {/* User Auth & Sync Button */}
+          <UserAuthButton />
 
           {/* Action Menu (Hamburger with Record, PaySlip, Settings, etc.) */}
           <div className="flex items-center relative shrink-0">

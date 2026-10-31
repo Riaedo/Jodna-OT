@@ -1,0 +1,133 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // User profile validation
+    function isValidUserProfile(data, userId) {
+      return data.keys().hasAll(['id', 'email']) &&
+        data.id == userId &&
+        data.id is string &&
+        data.id.size() <= 128 &&
+        data.email is string &&
+        data.email.size() <= 256 &&
+        (!('displayName' in data) || (data.displayName is string && data.displayName.size() <= 100)) &&
+        (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() <= 1000));
+    }
+
+    // Payroll settings validation
+    function isValidPayrollSettings(data, userId) {
+      return data.keys().hasAll(['userId']) &&
+        data.userId == userId &&
+        data.userId is string &&
+        data.userId.size() <= 128 &&
+        (!('baseSalary' in data) || data.baseSalary is number) &&
+        (!('appName' in data) || (data.appName is string && data.appName.size() <= 100)) &&
+        (!('employeeName' in data) || (data.employeeName is string && data.employeeName.size() <= 100)) &&
+        (!('workStartDate' in data) || (data.workStartDate is string && data.workStartDate.size() <= 10));
+    }
+
+    // Cycle data validation
+    function isValidCycleData(data, userId) {
+      return data.keys().hasAll(['userId', 'cycleKey']) &&
+        data.userId == userId &&
+        data.cycleKey is string &&
+        data.cycleKey.size() <= 10 &&
+        (!('taxPaid' in data) || data.taxPaid is number) &&
+        (!('records' in data) || (data.records is list && data.records.size() <= 40));
+    }
+
+    // Holiday validation
+    function isValidHoliday(data, userId) {
+      return data.keys().hasAll(['id', 'userId', 'date', 'name']) &&
+        data.userId == userId &&
+        data.id is string &&
+        data.id.size() <= 128 &&
+        data.date is string &&
+        data.date.size() <= 10 &&
+        data.name is string &&
+        data.name.size() <= 100;
+    }
+
+    // Salary increment validation
+    function isValidSalaryIncrement(data, userId) {
+      return data.keys().hasAll(['id', 'userId', 'tenureYear', 'effectiveMonth', 'salaryAfter']) &&
+        data.userId == userId &&
+        data.id is string &&
+        data.id.size() <= 128 &&
+        data.tenureYear is number &&
+        data.effectiveMonth is string &&
+        data.effectiveMonth.size() <= 10 &&
+        data.salaryAfter is number;
+    }
+
+    // User document
+    match /users/{userId} {
+      allow get: if isOwner(userId);
+      allow list: if false;
+      allow create: if isOwner(userId) && isValidId(userId) && isValidUserProfile(incoming(), userId);
+      allow update: if isOwner(userId) && isValidId(userId) && isValidUserProfile(incoming(), userId) && incoming().id == existing().id;
+      allow delete: if isOwner(userId) && isValidId(userId);
+
+      // User Payroll Settings subcollection
+      match /settings/{settingId} {
+        allow get: if isOwner(userId);
+        allow list: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidId(settingId) && isValidPayrollSettings(incoming(), userId);
+        allow update: if isOwner(userId) && isValidId(settingId) && isValidPayrollSettings(incoming(), userId) && incoming().userId == existing().userId;
+        allow delete: if isOwner(userId) && isValidId(settingId);
+      }
+
+      // User Cycles subcollection
+      match /cycles/{cycleKey} {
+        allow get: if isOwner(userId);
+        allow list: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidId(cycleKey) && isValidCycleData(incoming(), userId);
+        allow update: if isOwner(userId) && isValidId(cycleKey) && isValidCycleData(incoming(), userId) && incoming().userId == existing().userId;
+        allow delete: if isOwner(userId) && isValidId(cycleKey);
+      }
+
+      // User Holidays subcollection
+      match /holidays/{holidayId} {
+        allow get: if isOwner(userId);
+        allow list: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidId(holidayId) && isValidHoliday(incoming(), userId);
+        allow update: if isOwner(userId) && isValidId(holidayId) && isValidHoliday(incoming(), userId) && incoming().userId == existing().userId;
+        allow delete: if isOwner(userId) && isValidId(holidayId);
+      }
+
+      // User Salary Increments subcollection
+      match /salaryIncrements/{incrementId} {
+        allow get: if isOwner(userId);
+        allow list: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidId(incrementId) && isValidSalaryIncrement(incoming(), userId);
+        allow update: if isOwner(userId) && isValidId(incrementId) && isValidSalaryIncrement(incoming(), userId) && incoming().userId == existing().userId;
+        allow delete: if isOwner(userId) && isValidId(incrementId);
+      }
+    }
+  }
+}

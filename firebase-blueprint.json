@@ -1,0 +1,353 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Information about an authenticated user",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "User UID matching auth.uid",
+          "maxLength": 128
+        },
+        "email": {
+          "type": "string",
+          "description": "User email address",
+          "maxLength": 256
+        },
+        "displayName": {
+          "type": "string",
+          "description": "User display name",
+          "maxLength": 100
+        },
+        "photoURL": {
+          "type": "string",
+          "description": "User avatar photo URL",
+          "maxLength": 1000
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "ISO timestamp of account creation",
+          "maxLength": 40
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "ISO timestamp of last account update",
+          "maxLength": 40
+        }
+      },
+      "required": ["id", "email"]
+    },
+    "PayrollSettings": {
+      "title": "PayrollSettings",
+      "description": "User payroll settings, salary, allowances, and rules",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Owner UID",
+          "maxLength": 128
+        },
+        "appName": {
+          "type": "string",
+          "description": "App or company name",
+          "maxLength": 100
+        },
+        "appIcon": {
+          "type": "string",
+          "description": "Selected app icon identifier",
+          "maxLength": 50
+        },
+        "appSubtitle": {
+          "type": "string",
+          "description": "Subtitle or description",
+          "maxLength": 150
+        },
+        "employeeName": {
+          "type": "string",
+          "description": "Employee full name",
+          "maxLength": 100
+        },
+        "employeeId": {
+          "type": "string",
+          "description": "Employee ID code",
+          "maxLength": 50
+        },
+        "department": {
+          "type": "string",
+          "description": "Department or section",
+          "maxLength": 100
+        },
+        "workStartDate": {
+          "type": "string",
+          "description": "Work start date (YYYY-MM-DD)",
+          "maxLength": 10
+        },
+        "baseSalary": {
+          "type": "number",
+          "description": "Base salary in THB"
+        },
+        "daysPerMonth": {
+          "type": "number",
+          "description": "Working days divisor per month (usually 30)"
+        },
+        "hoursPerDay": {
+          "type": "number",
+          "description": "Working hours divisor per day (usually 8)"
+        },
+        "providentFundRate": {
+          "type": "number",
+          "description": "Provident fund contribution rate (e.g. 0.02)"
+        },
+        "socialSecurityCap": {
+          "type": "number",
+          "description": "Social security contribution cap in THB"
+        },
+        "socialSecurityRate": {
+          "type": "number",
+          "description": "Social security rate (e.g. 0.05)"
+        },
+        "housingAllowance": {
+          "type": "number",
+          "description": "Housing allowance in THB"
+        },
+        "hardshipAllowance": {
+          "type": "number",
+          "description": "Hardship allowance in THB"
+        },
+        "diligenceAmount": {
+          "type": "number",
+          "description": "Diligence allowance base in THB"
+        },
+        "shiftAmount": {
+          "type": "number",
+          "description": "Shift allowance in THB"
+        },
+        "otherDeductions": {
+          "type": "number",
+          "description": "Other deductions in THB"
+        },
+        "taxRateEstimate": {
+          "type": "number",
+          "description": "Estimated withholding tax rate"
+        },
+        "taxPaid": {
+          "type": "number",
+          "description": "Default tax paid in THB"
+        },
+        "cycleStartDay": {
+          "type": "number",
+          "description": "Cycle start day (1-31)"
+        },
+        "cycleEndDay": {
+          "type": "number",
+          "description": "Cycle end day (1-31)"
+        },
+        "shiftWorkEnabled": {
+          "type": "boolean",
+          "description": "Whether shift work is enabled"
+        },
+        "shiftGroup": {
+          "type": "string",
+          "description": "Shift group A or B",
+          "enum": ["A", "B"]
+        },
+        "shiftReferenceDate": {
+          "type": "string",
+          "description": "Reference date for alternating shift schedule",
+          "maxLength": 10
+        },
+        "shiftReferencePeriod": {
+          "type": "string",
+          "description": "Shift period on reference date",
+          "enum": ["DAY", "NIGHT"]
+        },
+        "leaveYearStartMonth": {
+          "type": "number",
+          "description": "Leave year starting month (1-12)"
+        },
+        "leaveYearStartDay": {
+          "type": "number",
+          "description": "Leave year starting day"
+        },
+        "leaveSickQuota": {
+          "type": "number",
+          "description": "Sick leave quota in days"
+        },
+        "leavePersonalQuota": {
+          "type": "number",
+          "description": "Personal leave quota in days"
+        },
+        "leaveVacationQuota": {
+          "type": "number",
+          "description": "Vacation leave quota in days"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "ISO timestamp of last update",
+          "maxLength": 40
+        }
+      },
+      "required": ["userId"]
+    },
+    "CycleData": {
+      "title": "CycleData",
+      "description": "Daily timesheet records and tax for a specific cycle",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Owner UID",
+          "maxLength": 128
+        },
+        "cycleKey": {
+          "type": "string",
+          "description": "Cycle identifier (e.g. 2026-10)",
+          "maxLength": 10,
+          "pattern": "^[0-9]{4}-[0-9]{2}$"
+        },
+        "taxPaid": {
+          "type": "number",
+          "description": "Tax paid for this specific payroll cycle"
+        },
+        "records": {
+          "type": "array",
+          "description": "Array of daily records for the cycle"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "ISO timestamp of last update",
+          "maxLength": 40
+        }
+      },
+      "required": ["userId", "cycleKey"]
+    },
+    "Holiday": {
+      "title": "Holiday",
+      "description": "Custom or company holiday entry",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Holiday unique ID",
+          "maxLength": 128
+        },
+        "userId": {
+          "type": "string",
+          "description": "Owner UID",
+          "maxLength": 128
+        },
+        "date": {
+          "type": "string",
+          "description": "Holiday date YYYY-MM-DD",
+          "maxLength": 10,
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "name": {
+          "type": "string",
+          "description": "Name of holiday",
+          "maxLength": 100
+        },
+        "type": {
+          "type": "string",
+          "description": "Type of holiday",
+          "enum": ["PUBLIC", "COMPANY", "SPECIAL"]
+        },
+        "isCustom": {
+          "type": "boolean",
+          "description": "Whether user created this holiday"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "ISO timestamp of creation",
+          "maxLength": 40
+        }
+      },
+      "required": ["id", "userId", "date", "name"]
+    },
+    "SalaryIncrement": {
+      "title": "SalaryIncrement",
+      "description": "Annual or promotion salary increment record",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Salary increment record unique ID",
+          "maxLength": 128
+        },
+        "userId": {
+          "type": "string",
+          "description": "Owner UID",
+          "maxLength": 128
+        },
+        "tenureYear": {
+          "type": "number",
+          "description": "Year of tenure (0, 1, 2...)"
+        },
+        "effectiveMonth": {
+          "type": "string",
+          "description": "Effective year and month (YYYY-MM)",
+          "maxLength": 7,
+          "pattern": "^[0-9]{4}-[0-9]{2}$"
+        },
+        "effectiveYear": {
+          "type": "number",
+          "description": "Effective year in CE"
+        },
+        "salaryBefore": {
+          "type": "number",
+          "description": "Salary before adjustment"
+        },
+        "increasePercent": {
+          "type": "number",
+          "description": "Percentage increase"
+        },
+        "salaryAfter": {
+          "type": "number",
+          "description": "Salary after adjustment"
+        },
+        "increaseAmount": {
+          "type": "number",
+          "description": "Monetary increase amount"
+        },
+        "providentFundDeduction": {
+          "type": "number",
+          "description": "Provident fund deduction amount"
+        },
+        "note": {
+          "type": "string",
+          "description": "Optional note",
+          "maxLength": 200
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "ISO timestamp of creation",
+          "maxLength": 40
+        }
+      },
+      "required": ["id", "userId", "tenureYear", "effectiveMonth", "salaryAfter"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profile document owned strictly by userId"
+    },
+    "/users/{userId}/settings/{settingId}": {
+      "schema": "PayrollSettings",
+      "description": "User payroll settings document"
+    },
+    "/users/{userId}/cycles/{cycleKey}": {
+      "schema": "CycleData",
+      "description": "Cycle records and tax for each payroll cycle"
+    },
+    "/users/{userId}/holidays/{holidayId}": {
+      "schema": "Holiday",
+      "description": "User custom holidays"
+    },
+    "/users/{userId}/salaryIncrements/{incrementId}": {
+      "schema": "SalaryIncrement",
+      "description": "User salary increment history"
+    }
+  }
+}
