@@ -8,7 +8,10 @@ import {
   getEffectiveSalaryForCycle,
   getCycleForDate,
   getLatestCycleAndDate,
-  getMonthDiff
+  getMonthDiff,
+  getCyclePeriodForDate,
+  getCyclePeriodForYearMonth,
+  isSamePeriod
 } from './utils/calculator';
 import { DEFAULT_SETTINGS, getInitialRecords } from './data/initialData';
 import { DEFAULT_HOLIDAYS } from './data/holidays';
@@ -204,6 +207,11 @@ export default function App() {
 
   const hasWorkStartDate = Boolean(settings.workStartDate && settings.workStartDate.trim() !== '');
 
+  // Current OT Period based on Asia/Bangkok date and cutoff rule (e.g. 20th - 19th)
+  const currentPeriod = useMemo(() => {
+    return getCyclePeriodForDate(undefined, settings.cycleStartDay, settings.cycleEndDay);
+  }, [settings.cycleStartDay, settings.cycleEndDay]);
+
   // 3. วันที่ รอบเดือน รอบปี ต่างๆ ให้เริ่มแสดงจากวันที่เริ่มทำงาน และแสดงจนถึงวันที่ รอบเดือน รอบปี ล่าสุดเท่านั้น
   const { startCycle, latestCycle, minCycleOffset, maxCycleOffset } = useMemo(() => {
     const baseYear = 2026;
@@ -212,7 +220,7 @@ export default function App() {
     if (!hasWorkStartDate) {
       return {
         startCycle: { year: 2026, month: 9, cycleKey: '2026-10' },
-        latestCycle: { year: 2026, month: 9, cycleKey: '2026-10', latestDate: '2026-10-26' },
+        latestCycle: { year: currentPeriod.cycleYear, month: currentPeriod.cycleMonth, cycleKey: currentPeriod.cycleKey, latestDate: currentPeriod.periodEnd },
         minCycleOffset: 0,
         maxCycleOffset: 0,
       };
@@ -222,8 +230,9 @@ export default function App() {
     const recordedKeys = Object.keys(allCycleRecords);
     const latest = getLatestCycleAndDate(settings.cycleStartDay, settings.cycleEndDay, recordedKeys);
 
+    const currentOffset = getMonthDiff(baseYear, baseMonth, currentPeriod.cycleYear, currentPeriod.cycleMonth);
     const minOffset = getMonthDiff(baseYear, baseMonth, start.year, start.month);
-    const maxOffset = getMonthDiff(baseYear, baseMonth, latest.year, latest.month);
+    const maxOffset = Math.max(currentOffset, getMonthDiff(baseYear, baseMonth, latest.year, latest.month));
 
     return {
       startCycle: start,
@@ -231,10 +240,13 @@ export default function App() {
       minCycleOffset: minOffset,
       maxCycleOffset: Math.max(minOffset, maxOffset),
     };
-  }, [hasWorkStartDate, settings.workStartDate, settings.cycleStartDay, settings.cycleEndDay, allCycleRecords]);
+  }, [hasWorkStartDate, settings.workStartDate, settings.cycleStartDay, settings.cycleEndDay, allCycleRecords, currentPeriod]);
 
-  // Cycle navigation offset (0 = 2026-10 / current base, -1 = prev, +1 = next)
-  const [cycleOffset, setCycleOffset] = useState<number>(0);
+  // Cycle navigation offset relative to base (2026-10). Defaults to current period.
+  const [cycleOffset, setCycleOffset] = useState<number>(() => {
+    const period = getCyclePeriodForDate(undefined, 20, 19);
+    return getMonthDiff(2026, 9, period.cycleYear, period.cycleMonth);
+  });
 
   // Auto-clamp cycleOffset between minCycleOffset and maxCycleOffset
   useEffect(() => {
@@ -256,6 +268,16 @@ export default function App() {
     const key = `${y}-${String(m + 1).padStart(2, '0')}`;
     return { targetYear: y, targetMonth: m, cycleKey: key };
   }, [cycleOffset]);
+
+  // Selected OT Period for the cycle currently being viewed
+  const selectedPeriod = useMemo(() => {
+    return getCyclePeriodForYearMonth(targetYear, targetMonth, settings.cycleStartDay, settings.cycleEndDay);
+  }, [targetYear, targetMonth, settings.cycleStartDay, settings.cycleEndDay]);
+
+  // Condition to hide/show return button: exact normalized date comparison
+  const isCurrentPeriod = useMemo(() => {
+    return isSamePeriod(selectedPeriod, currentPeriod);
+  }, [selectedPeriod, currentPeriod]);
 
   // Active cycle records
   const currentRecords = useMemo(() => {
@@ -982,8 +1004,13 @@ export default function App() {
         maxMonth={latestCycle.month}
         isPrevDisabled={cycleOffset <= minCycleOffset}
         isNextDisabled={cycleOffset >= maxCycleOffset}
+        isCurrentPeriod={isCurrentPeriod}
         onResetToCurrentCycle={() => {
-          setCycleOffset(maxCycleOffset);
+          const baseYear = 2026;
+          const baseMonth = 9;
+          const targetOffset = getMonthDiff(baseYear, baseMonth, currentPeriod.cycleYear, currentPeriod.cycleMonth);
+          const clamped = Math.max(minCycleOffset, Math.min(maxCycleOffset, targetOffset));
+          setCycleOffset(clamped);
           showToast('กลับมารอบตัดวิกปัจจุบันแล้ว');
         }}
         onSelectCycle={(navYear, navMonth) => {

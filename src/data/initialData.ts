@@ -32,7 +32,7 @@ export const DEFAULT_SETTINGS: PayrollSettings = {
   shiftReferencePeriod: 'DAY',
 
   // Yearly Leave Configuration
-  leaveYearStartMonth: 1, // มกราคม
+  leaveYearStartMonth: 12, // ธันวาคม (ค่าเริ่มต้นรอบปี 20 ธ.ค. - 19 ธ.ค.)
   leaveYearStartDay: 20,
   leaveSickQuota: 30,
   leavePersonalQuota: 6,

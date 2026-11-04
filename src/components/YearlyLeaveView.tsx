@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { DailyRecord, PayrollSettings } from '../types/overtime';
-import { getVacationQuotaForYear } from '../utils/calculator';
+import { getVacationQuotaForYear, getAnnualLeavePeriod } from '../utils/calculator';
 import { 
   Calendar, 
   CalendarDays, 
@@ -69,36 +69,43 @@ export const YearlyLeaveView: React.FC<YearlyLeaveViewProps> = ({
     );
   }
 
-  // Collect all leave records for the selected leave year cycle
+  // Get annual leave period boundaries and labels (e.g. 2025-12-20 to 2026-12-19 for Year 2026)
+  const leavePeriod = useMemo(() => {
+    return getAnnualLeavePeriod(
+      selectedYear,
+      settings.leaveYearStartMonth,
+      settings.cycleStartDay,
+      settings.cycleEndDay
+    );
+  }, [selectedYear, settings.leaveYearStartMonth, settings.cycleStartDay, settings.cycleEndDay]);
+
+  // Collect all leave records for the selected leave year cycle with inclusive boundaries
   const leaveRecords = useMemo(() => {
     const list: DailyRecord[] = [];
     const seenDates = new Set<string>();
 
-    const startM = settings.leaveYearStartMonth || 1;
-    const startD = settings.cycleStartDay || settings.leaveYearStartDay || 20;
-
-    const startMStr = String(startM).padStart(2, '0');
-    const startDStr = String(startD).padStart(2, '0');
-    const cycleStartDate = `${selectedYear}-${startMStr}-${startDStr}`;
-    const nextY = selectedYear + 1;
-    const cycleEndDate = `${nextY}-${startMStr}-${startDStr}`;
+    const periodStartDate = leavePeriod.startDate;
+    const periodEndDate = leavePeriod.endDate;
 
     Object.values(allCycleRecords).forEach((recordsArray) => {
       recordsArray.forEach((r) => {
+        if (!r.date) return;
+        const recordDate = r.date.trim().slice(0, 10);
         if (
           (r.shiftType === 'E' || r.shiftType === 'D' || r.shiftType === 'J') &&
-          r.date >= cycleStartDate &&
-          r.date < cycleEndDate &&
-          !seenDates.has(r.date)
+          recordDate >= periodStartDate &&
+          recordDate <= periodEndDate &&
+          !seenDates.has(recordDate)
         ) {
-          seenDates.add(r.date);
-          list.push(r);
+          seenDates.add(recordDate);
+          list.push({ ...r, date: recordDate });
         }
       });
     });
 
     return list.sort((a, b) => a.date.localeCompare(b.date));
-  }, [allCycleRecords, selectedYear, settings.leaveYearStartMonth, settings.cycleStartDay, settings.leaveYearStartDay]);
+  }, [allCycleRecords, leavePeriod]);
+
 
   // Counts for selected year
   const sickLeaveCount = leaveRecords.filter((r) => r.shiftType === 'E').length;
@@ -171,7 +178,7 @@ export const YearlyLeaveView: React.FC<YearlyLeaveViewProps> = ({
             บันทึกการลารวมประจำปี ค.ศ. {selectedYear}
           </h2>
           <p className="text-xs sm:text-sm text-slate-300 mt-1 max-w-2xl leading-relaxed">
-            สรุปประวัติวันลาป่วย (E), ลากิจ (D), และลาพักร้อน (J) ประจำรอบปี
+            สรุปประวัติวันลาป่วย (E), ลากิจ (D), และลาพักร้อน (J) ประจำรอบปี ({leavePeriod.label})
           </p>
         </div>
 
@@ -191,7 +198,7 @@ export const YearlyLeaveView: React.FC<YearlyLeaveViewProps> = ({
           </button>
           <div className="px-4 text-center">
             <span className="text-[10px] text-indigo-400 font-bold block uppercase tracking-wider">
-              รอบปีที่เลือก
+              {leavePeriod.shortLabel}
             </span>
             <span className="text-base font-extrabold text-white">
               ปี ค.ศ. {selectedYear}

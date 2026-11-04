@@ -109,10 +109,10 @@ export const UserAuthButton: React.FC = () => {
             onClick={handleSignInAuto}
             disabled={isSigningIn}
             title="เข้าสู่ระบบด้วย Google เพื่อซิงค์ข้อมูลบน Cloud (Firebase)"
-            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 hover:border-indigo-400 dark:hover:border-indigo-500 shadow-sm text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400 text-xs font-bold transition-all active:scale-95 shrink-0"
+            className="flex items-center gap-1.5 px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 hover:border-indigo-400 dark:hover:border-indigo-500 shadow-sm text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400 text-xs font-bold transition-all active:scale-95 shrink-0"
           >
             {isSigningIn ? (
-              <RefreshCw className="w-3.5 h-3.5 animate-spin text-indigo-500" />
+              <RefreshCw className="w-3.5 h-3.5 animate-spin text-indigo-500 shrink-0" />
             ) : (
               <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24">
                 <path
@@ -138,14 +138,14 @@ export const UserAuthButton: React.FC = () => {
 
           <button
             onClick={() => setIsOpen(!isOpen)}
-            className="p-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-500 hover:text-slate-800 dark:hover:text-white"
+            className="p-1 sm:p-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-500 hover:text-slate-800 dark:hover:white shrink-0"
             title="ตัวเลือกการเข้าสู่ระบบ (Popup หรือ Redirect)"
           >
-            <ChevronDown className="w-3 h-3" />
+            <ChevronDown className="w-3 h-3 shrink-0" />
           </button>
 
           {isOpen && (
-            <div className="absolute right-0 top-11 w-56 bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 p-2 z-50 text-xs">
+            <div className="absolute right-0 top-full mt-1.5 w-56 max-w-[calc(100vw-1.5rem)] bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 p-2 z-50 text-xs">
               <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
                 เลือกวิธีเข้าสู่ระบบ
               </div>
@@ -179,25 +179,25 @@ export const UserAuthButton: React.FC = () => {
           )}
         </div>
       ) : (
-        <div className="relative shrink-0" ref={dropdownRef}>
+        <div className="relative shrink-0 flex items-center" ref={dropdownRef}>
           <button
             onClick={() => setIsOpen(!isOpen)}
-            className="flex items-center gap-1.5 p-1 sm:px-2 sm:py-1 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700/80 border border-slate-200 dark:border-slate-700 transition-all text-xs"
+            className="flex items-center gap-1 sm:gap-1.5 p-1 sm:px-2 sm:py-1 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700/80 border border-slate-200 dark:border-slate-700 transition-all text-xs shrink-0 select-none"
             title={user.displayName || user.email || 'บัญชีผู้ใช้'}
           >
             {user.photoURL ? (
               <img
                 src={user.photoURL}
                 alt={user.displayName || 'Avatar'}
-                className="w-6 h-6 rounded-lg object-cover ring-1 ring-indigo-500/30"
+                className="w-6 h-6 sm:w-7 sm:h-7 min-w-[24px] min-h-[24px] max-w-[28px] max-h-[28px] rounded-lg object-cover ring-1 ring-indigo-500/30 shrink-0 aspect-square"
               />
             ) : (
-              <div className="w-6 h-6 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold text-[10px]">
+              <div className="w-6 h-6 sm:w-7 sm:h-7 min-w-[24px] min-h-[24px] rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold text-[10px] shrink-0 aspect-square">
                 {(user.displayName?.[0] || user.email?.[0] || 'U').toUpperCase()}
               </div>
             )}
 
-            <div className="hidden md:flex flex-col text-left leading-none">
+            <div className="hidden md:flex flex-col text-left leading-none min-w-0">
               <span className="font-bold text-[11px] text-slate-800 dark:text-slate-100 truncate max-w-[80px]">
                 {user.displayName?.split(' ')[0] || 'ผู้ใช้'}
               </span>
@@ -224,11 +224,11 @@ export const UserAuthButton: React.FC = () => {
               )}
             </div>
 
-            <ChevronDown className="w-3 h-3 text-slate-400" />
+            <ChevronDown className="w-3 h-3 text-slate-400 shrink-0" />
           </button>
 
           {isOpen && (
-            <div className="absolute right-0 top-10 mt-1.5 w-64 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 p-3 z-50 animate-in fade-in zoom-in-95 duration-150 backdrop-blur-md">
+            <div className="absolute right-0 top-full mt-1.5 w-64 max-w-[calc(100vw-1.5rem)] bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 p-3 z-50 animate-in fade-in zoom-in-95 duration-150 backdrop-blur-md">
               {/* User info */}
               <div className="flex items-center gap-2.5 pb-2.5 border-b border-slate-100 dark:border-slate-800">
                 {user.photoURL ? (

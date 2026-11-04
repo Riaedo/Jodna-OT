@@ -574,14 +574,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     เดือนเริ่มรอบปีวันลา
                   </label>
                   <select
-                    value={formData.leaveYearStartMonth || 1}
+                    value={formData.leaveYearStartMonth || 12}
                     onChange={(e) => handleChange('leaveYearStartMonth', Number(e.target.value))}
                     className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-100"
                   >
-                    <option value="1">มกราคม (เริ่มวันที่ {formData.cycleStartDay})</option>
-                    <option value="10">ตุลาคม (เริ่มวันที่ {formData.cycleStartDay})</option>
-                    <option value="11">พฤศจิกายน (เริ่มวันที่ {formData.cycleStartDay})</option>
-                    <option value="12">ธันวาคม (เริ่มวันที่ {formData.cycleStartDay})</option>
+                    <option value="12">ธันวาคม (เริ่มวันที่ {formData.cycleStartDay} ธ.ค. - {formData.cycleEndDay} ธ.ค.) - ค่าเริ่มต้น</option>
+                    <option value="1">มกราคม (เริ่มวันที่ {formData.cycleStartDay} ม.ค. - {formData.cycleEndDay} ม.ค.)</option>
+                    <option value="10">ตุลาคม (เริ่มวันที่ {formData.cycleStartDay} ต.ค. - {formData.cycleEndDay} ต.ค.)</option>
+                    <option value="11">พฤศจิกายน (เริ่มวันที่ {formData.cycleStartDay} พ.ย. - {formData.cycleEndDay} พ.ย.)</option>
                   </select>
                   <span className="text-[10px] text-slate-400 mt-1 block">
                     รอบปีวันลาตัดวันที่ {formData.cycleStartDay} เดียวกัน

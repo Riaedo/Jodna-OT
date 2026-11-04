@@ -281,10 +281,173 @@ export function isValidDateString(dateStr: string): boolean {
 }
 
 /**
+ * Returns current date string (YYYY-MM-DD) in Asia/Bangkok timezone.
+ */
+export function getBangkokDateString(dateInput?: Date | string): string {
+  if (typeof dateInput === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateInput)) {
+    return dateInput;
+  }
+  const d = dateInput instanceof Date ? dateInput : new Date();
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Bangkok',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(d);
+}
+
+/**
+ * Calculates OT cycle period (start date, end date, cycle year & month) for a specific date
+ * following the cutoff rule (e.g. 20th of prev month to 19th of current month).
+ * Full support for leap years, February, and year/month rollover in Asia/Bangkok.
+ */
+export function getCyclePeriodForDate(
+  dateInput?: Date | string,
+  startDay = 20,
+  endDay = 19
+): {
+  periodStart: string;
+  periodEnd: string;
+  cycleYear: number;
+  cycleMonth: number; // 0-11
+  cycleKey: string;
+} {
+  const dateStr = getBangkokDateString(dateInput);
+  const parts = dateStr.split('-');
+  const y = parseInt(parts[0], 10);
+  const m = parseInt(parts[1], 10) - 1; // 0-11
+  const d = parseInt(parts[2], 10);
+
+  if (startDay > endDay) {
+    // Two-month spanning cycle (e.g. 20th to 19th)
+    if (d >= startDay) {
+      // e.g. 20 Nov 2026 -> 20 Nov 2026 to 19 Dec 2026 (cycle: Dec 2026)
+      let nextM = m + 1;
+      let nextY = y;
+      if (nextM > 11) {
+        nextM = 0;
+        nextY = y + 1;
+      }
+      const startMonthDays = new Date(y, m + 1, 0).getDate();
+      const nextMonthDays = new Date(nextY, nextM + 1, 0).getDate();
+
+      const pStart = `${y}-${String(m + 1).padStart(2, '0')}-${String(Math.min(startDay, startMonthDays)).padStart(2, '0')}`;
+      const pEnd = `${nextY}-${String(nextM + 1).padStart(2, '0')}-${String(Math.min(endDay, nextMonthDays)).padStart(2, '0')}`;
+
+      return {
+        periodStart: pStart,
+        periodEnd: pEnd,
+        cycleYear: nextY,
+        cycleMonth: nextM,
+        cycleKey: `${nextY}-${String(nextM + 1).padStart(2, '0')}`,
+      };
+    } else {
+      // e.g. 4 Nov 2026 -> 20 Oct 2026 to 19 Nov 2026 (cycle: Nov 2026)
+      let prevM = m - 1;
+      let prevY = y;
+      if (prevM < 0) {
+        prevM = 11;
+        prevY = y - 1;
+      }
+      const prevMonthDays = new Date(prevY, prevM + 1, 0).getDate();
+      const currentMonthDays = new Date(y, m + 1, 0).getDate();
+
+      const pStart = `${prevY}-${String(prevM + 1).padStart(2, '0')}-${String(Math.min(startDay, prevMonthDays)).padStart(2, '0')}`;
+      const pEnd = `${y}-${String(m + 1).padStart(2, '0')}-${String(Math.min(endDay, currentMonthDays)).padStart(2, '0')}`;
+
+      return {
+        periodStart: pStart,
+        periodEnd: pEnd,
+        cycleYear: y,
+        cycleMonth: m,
+        cycleKey: `${y}-${String(m + 1).padStart(2, '0')}`,
+      };
+    }
+  } else {
+    // Single month cycle (e.g. 1st to 30th/31st)
+    const totalDays = new Date(y, m + 1, 0).getDate();
+    const pStart = `${y}-${String(m + 1).padStart(2, '0')}-${String(Math.min(startDay, totalDays)).padStart(2, '0')}`;
+    const pEnd = `${y}-${String(m + 1).padStart(2, '0')}-${String(Math.min(endDay, totalDays)).padStart(2, '0')}`;
+    return {
+      periodStart: pStart,
+      periodEnd: pEnd,
+      cycleYear: y,
+      cycleMonth: m,
+      cycleKey: `${y}-${String(m + 1).padStart(2, '0')}`,
+    };
+  }
+}
+
+/**
+ * Calculates start and end dates for a cycle specified by year and monthIndex (0-11).
+ * In this application, monthIndex corresponds to the month of the cycle's ending date.
+ */
+export function getCyclePeriodForYearMonth(
+  cycleYear: number,
+  cycleMonthIndex: number, // 0-11
+  startDay = 20,
+  endDay = 19
+): {
+  periodStart: string;
+  periodEnd: string;
+  cycleYear: number;
+  cycleMonth: number;
+  cycleKey: string;
+} {
+  if (startDay > endDay) {
+    let prevM = cycleMonthIndex - 1;
+    let prevY = cycleYear;
+    if (prevM < 0) {
+      prevM = 11;
+      prevY = cycleYear - 1;
+    }
+    const prevMonthDays = new Date(prevY, prevM + 1, 0).getDate();
+    const currMonthDays = new Date(cycleYear, cycleMonthIndex + 1, 0).getDate();
+
+    const pStart = `${prevY}-${String(prevM + 1).padStart(2, '0')}-${String(Math.min(startDay, prevMonthDays)).padStart(2, '0')}`;
+    const pEnd = `${cycleYear}-${String(cycleMonthIndex + 1).padStart(2, '0')}-${String(Math.min(endDay, currMonthDays)).padStart(2, '0')}`;
+
+    return {
+      periodStart: pStart,
+      periodEnd: pEnd,
+      cycleYear,
+      cycleMonth: cycleMonthIndex,
+      cycleKey: `${cycleYear}-${String(cycleMonthIndex + 1).padStart(2, '0')}`,
+    };
+  } else {
+    const totalDays = new Date(cycleYear, cycleMonthIndex + 1, 0).getDate();
+    const pStart = `${cycleYear}-${String(cycleMonthIndex + 1).padStart(2, '0')}-${String(Math.min(startDay, totalDays)).padStart(2, '0')}`;
+    const pEnd = `${cycleYear}-${String(cycleMonthIndex + 1).padStart(2, '0')}-${String(Math.min(endDay, totalDays)).padStart(2, '0')}`;
+    return {
+      periodStart: pStart,
+      periodEnd: pEnd,
+      cycleYear,
+      cycleMonth: cycleMonthIndex,
+      cycleKey: `${cycleYear}-${String(cycleMonthIndex + 1).padStart(2, '0')}`,
+    };
+  }
+}
+
+/**
+ * Normalized comparison between two periods by exact timestamps.
+ */
+export function isSamePeriod(
+  p1?: { periodStart?: string; periodEnd?: string } | null,
+  p2?: { periodStart?: string; periodEnd?: string } | null
+): boolean {
+  if (!p1 || !p2 || !p1.periodStart || !p1.periodEnd || !p2.periodStart || !p2.periodEnd) {
+    return false;
+  }
+  const t1Start = new Date(p1.periodStart + 'T00:00:00+07:00').getTime();
+  const t1End = new Date(p1.periodEnd + 'T00:00:00+07:00').getTime();
+  const t2Start = new Date(p2.periodStart + 'T00:00:00+07:00').getTime();
+  const t2End = new Date(p2.periodEnd + 'T00:00:00+07:00').getTime();
+
+  return t1Start === t2Start && t1End === t2End;
+}
+
+/**
  * Returns the cycle { year, month (0-11), cycleKey } for a specific date.
- * E.g., for startDay=20, endDay=19:
- * 2026-10-01 belongs to cycle 2026-10 (Sept 20 - Oct 19).
- * 2026-09-20 belongs to cycle 2026-10 (Sept 20 - Oct 19).
  */
 export function getCycleForDate(
   dateStr: string,
@@ -294,26 +457,8 @@ export function getCycleForDate(
   if (!isValidDateString(dateStr)) {
     return { year: 2026, month: 9, cycleKey: '2026-10' };
   }
-  const parts = dateStr.split('-');
-  const y = parseInt(parts[0], 10);
-  const m = parseInt(parts[1], 10) - 1; // 0-11
-  const d = parseInt(parts[2], 10);
-
-  let cycleYear = y;
-  let cycleMonth = m;
-
-  if (startDay > endDay) {
-    if (d >= startDay) {
-      cycleMonth += 1;
-      if (cycleMonth > 11) {
-        cycleMonth = 0;
-        cycleYear += 1;
-      }
-    }
-  }
-
-  const cycleKey = `${cycleYear}-${String(cycleMonth + 1).padStart(2, '0')}`;
-  return { year: cycleYear, month: cycleMonth, cycleKey };
+  const period = getCyclePeriodForDate(dateStr, startDay, endDay);
+  return { year: period.cycleYear, month: period.cycleMonth, cycleKey: period.cycleKey };
 }
 
 /**
@@ -331,10 +476,10 @@ export function getLatestCycleAndDate(
   endDay = 19,
   recordedCycleKeys: string[] = []
 ): { year: number; month: number; cycleKey: string; latestDate: string } {
-  const now = new Date();
-  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const todayStr = getBangkokDateString();
+  const currentPeriod = getCyclePeriodForDate(todayStr, startDay, endDay);
   
-  let latest = getCycleForDate(todayStr, startDay, endDay);
+  let latest = { year: currentPeriod.cycleYear, month: currentPeriod.cycleMonth, cycleKey: currentPeriod.cycleKey };
   let latestDate = todayStr;
 
   recordedCycleKeys.forEach((key) => {
@@ -568,3 +713,100 @@ export function getVacationQuotaForYear(
     note: 'ค่าเริ่มต้นระบบ',
   };
 }
+
+export interface AnnualLeavePeriod {
+  startDate: string; // YYYY-MM-DD
+  endDate: string;   // YYYY-MM-DD
+  startYear: number;
+  endYear: number;
+  startMonth: number;
+  endMonth: number;
+  startDay: number;
+  endDay: number;
+  label: string;      // e.g. "20 ธันวาคม 2025 ถึง 19 ธันวาคม 2026"
+  shortLabel: string; // e.g. "20 ธ.ค. 2025 - 19 ธ.ค. 2026"
+}
+
+/**
+ * Calculates the exact inclusive start and end dates for an annual leave year.
+ * For Leave Year 2026 with default cutoff (20th - 19th):
+ * Start Date: 2025-12-20 (inclusive)
+ * End Date:   2026-12-19 (inclusive)
+ */
+export function getAnnualLeavePeriod(
+  leaveYear: number,
+  leaveYearStartMonth?: number,
+  cycleStartDay = 20,
+  cycleEndDay = 19
+): AnnualLeavePeriod {
+  // If not configured or set to 1 or 12, default to December 20 (leaveYear - 1) to December 19 (leaveYear)
+  const effectiveMonth = (!leaveYearStartMonth || leaveYearStartMonth === 1 || leaveYearStartMonth === 12)
+    ? 12
+    : leaveYearStartMonth;
+
+  const startYear = leaveYear - 1;
+  const endYear = leaveYear;
+
+  const startDay = cycleStartDay || 20;
+  const endDay = cycleEndDay || (startDay === 1 ? 31 : startDay - 1);
+
+  const prevMonthTotalDays = new Date(startYear, effectiveMonth, 0).getDate();
+  const currMonthTotalDays = new Date(endYear, effectiveMonth, 0).getDate();
+
+  const effectiveStartDay = Math.min(startDay, prevMonthTotalDays);
+  const effectiveEndDay = Math.min(endDay, currMonthTotalDays);
+
+  const startMStr = String(effectiveMonth).padStart(2, '0');
+  const startDStr = String(effectiveStartDay).padStart(2, '0');
+  const endMStr = String(effectiveMonth).padStart(2, '0');
+  const endDStr = String(effectiveEndDay).padStart(2, '0');
+
+  const startDate = `${startYear}-${startMStr}-${startDStr}`;
+  const endDate = `${endYear}-${endMStr}-${endDStr}`;
+
+  const thaiMonthsShort = [
+    'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
+    'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'
+  ];
+  const thaiMonthsFull = [
+    'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
+    'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'
+  ];
+
+  const mIdx = effectiveMonth - 1;
+  const shortLabel = `${effectiveStartDay} ${thaiMonthsShort[mIdx]} ${startYear} - ${effectiveEndDay} ${thaiMonthsShort[mIdx]} ${endYear}`;
+  const label = `${effectiveStartDay} ${thaiMonthsFull[mIdx]} ${startYear} ถึง ${effectiveEndDay} ${thaiMonthsFull[mIdx]} ${endYear}`;
+
+  return {
+    startDate,
+    endDate,
+    startYear,
+    endYear,
+    startMonth: effectiveMonth,
+    endMonth: effectiveMonth,
+    startDay: effectiveStartDay,
+    endDay: effectiveEndDay,
+    label,
+    shortLabel,
+  };
+}
+
+/**
+ * Inclusive boundary check for a leave record date in the annual leave year.
+ * Criteria: leaveDate >= periodStartDate && leaveDate <= periodEndDate
+ */
+export function isDateInAnnualLeavePeriod(
+  dateInput: string,
+  leaveYear: number,
+  leaveYearStartMonth?: number,
+  cycleStartDay = 20,
+  cycleEndDay = 19
+): boolean {
+  if (!dateInput) return false;
+  const cleanDate = dateInput.trim().slice(0, 10);
+  if (cleanDate.length !== 10) return false;
+
+  const period = getAnnualLeavePeriod(leaveYear, leaveYearStartMonth, cycleStartDay, cycleEndDay);
+  return cleanDate >= period.startDate && cleanDate <= period.endDate;
+}
+
