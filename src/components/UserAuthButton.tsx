@@ -201,10 +201,27 @@ export const UserAuthButton: React.FC = () => {
               <span className="font-bold text-[11px] text-slate-800 dark:text-slate-100 truncate max-w-[80px]">
                 {user.displayName?.split(' ')[0] || 'ผู้ใช้'}
               </span>
-              <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-0.5">
-                <Cloud className="w-2.5 h-2.5" />
-                <span>ซิงค์แล้ว</span>
-              </span>
+              {syncStatus === 'saving' ? (
+                <span className="text-[9px] text-indigo-600 dark:text-indigo-400 font-semibold flex items-center gap-0.5">
+                  <RefreshCw className="w-2.5 h-2.5 animate-spin" />
+                  <span>กำลังบันทึก</span>
+                </span>
+              ) : syncStatus === 'error' ? (
+                <span className="text-[9px] text-rose-600 dark:text-rose-400 font-semibold flex items-center gap-0.5">
+                  <AlertCircle className="w-2.5 h-2.5" />
+                  <span>ข้อผิดพลาด</span>
+                </span>
+              ) : syncStatus === 'offline' ? (
+                <span className="text-[9px] text-amber-600 dark:text-amber-400 font-semibold flex items-center gap-0.5">
+                  <CloudOff className="w-2.5 h-2.5" />
+                  <span>ออฟไลน์</span>
+                </span>
+              ) : (
+                <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-0.5">
+                  <Cloud className="w-2.5 h-2.5" />
+                  <span>ซิงค์แล้ว</span>
+                </span>
+              )}
             </div>
 
             <ChevronDown className="w-3 h-3 text-slate-400" />

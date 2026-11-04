@@ -288,59 +288,57 @@ export default function App() {
   }, [cycleTaxes]);
 
   const { user, setSyncStatus } = useAuth();
-  const isInitialSyncDone = useRef(false);
+  const [isCloudLoaded, setIsCloudLoaded] = useState(false);
   const isRemoteUpdate = useRef(false);
+  const settingsLoadedRef = useRef(false);
+  const cyclesLoadedRef = useRef(false);
+  const holidaysLoadedRef = useRef(false);
+  const incrementsLoadedRef = useRef(false);
 
-  // Setup Real-time Listeners (onSnapshot) and Cloud-Driven Local Reset
+  // Setup Real-time Listeners (onSnapshot) with Initial Loading Protection
   useEffect(() => {
     if (!user) {
-      isInitialSyncDone.current = false;
+      setIsCloudLoaded(true);
+      setSyncStatus('local');
       return;
     }
 
     setSyncStatus('saving');
     let isSubscribed = true;
+    settingsLoadedRef.current = false;
+    cyclesLoadedRef.current = false;
+    holidaysLoadedRef.current = false;
+    incrementsLoadedRef.current = false;
+    setIsCloudLoaded(false);
 
-    // Check if initial one-time clean start should run for current user session
-    const performInitialCleanStartIfNeeded = async () => {
-      const cleanKey = `ot_app_clean_v1_${user.uid}`;
-      if (localStorage.getItem(cleanKey) !== 'completed') {
-        console.log('Executing approved Clean Start for UID:', user.uid);
-        try {
-          await cleanStartUserCloudData(user.uid);
-          localStorage.setItem(cleanKey, 'completed');
-          isRemoteUpdate.current = true;
-          setSettings(DEFAULT_SETTINGS);
-          setAllCycleRecords({});
-          setCycleTaxes({});
-          setHolidays([]);
-          setSalaryIncrements([]);
-          showToast('ล้างข้อมูลเริ่มต้นใหม่ (Clean Start) บน Cloud สำเร็จ');
-        } catch (cleanErr) {
-          console.error('Clean start initial error:', cleanErr);
+    const checkAllLoaded = () => {
+      if (
+        settingsLoadedRef.current && 
+        cyclesLoadedRef.current && 
+        holidaysLoadedRef.current && 
+        incrementsLoadedRef.current
+      ) {
+        if (isSubscribed) {
+          setIsCloudLoaded(true);
+          setSyncStatus('synced');
         }
       }
     };
-    performInitialCleanStartIfNeeded();
 
-    // 1. Profile listener (Cloud-Driven Local Reset across devices)
+    // Safety timeout: ensure UI is not blocked indefinitely if offline
+    const fallbackTimer = setTimeout(() => {
+      if (isSubscribed && !isCloudLoaded) {
+        setIsCloudLoaded(true);
+        setSyncStatus('synced');
+      }
+    }, 2500);
+
+    // 1. Profile listener (Observes user profile updates safely)
     const unsubProfile = subscribeUserProfile(
       user.uid,
       (resetVersion) => {
         if (!isSubscribed) return;
-        const currentLocalReset = localStorage.getItem('ot_app_applied_reset_version');
-        if (resetVersion && currentLocalReset !== resetVersion) {
-          console.log(`Cloud-driven reset detected: ${resetVersion}`);
-          isRemoteUpdate.current = true;
-          clearOtAppLocalStorage();
-          localStorage.setItem('ot_app_applied_reset_version', resetVersion);
-          setSettings(DEFAULT_SETTINGS);
-          setAllCycleRecords({});
-          setCycleTaxes({});
-          setHolidays([]);
-          setSalaryIncrements([]);
-          showToast('ซิงค์สถานะเริ่มต้นใหม่ (Clean Start) จาก Cloud สำเร็จ');
-        }
+        console.log(`User profile verified for UID: ${user.uid}, version: ${resetVersion || 'standard'}`);
       },
       (err) => console.error('Profile listener error:', err)
     );
@@ -350,6 +348,7 @@ export default function App() {
       user.uid,
       (remoteSettings) => {
         if (!isSubscribed) return;
+        settingsLoadedRef.current = true;
         if (remoteSettings) {
           isRemoteUpdate.current = true;
           setSettings((prev) => ({
@@ -358,9 +357,13 @@ export default function App() {
             yearlyVacationQuotas: remoteSettings.yearlyVacationQuotas || prev.yearlyVacationQuotas,
           }));
         }
-        setSyncStatus('synced');
+        checkAllLoaded();
       },
-      (err) => console.error('Settings listener error:', err)
+      (err) => {
+        console.error('Settings listener error:', err);
+        settingsLoadedRef.current = true;
+        checkAllLoaded();
+      }
     );
 
     // 3. Cycles & Taxes Real-time listener
@@ -368,12 +371,21 @@ export default function App() {
       user.uid,
       (remoteCycles, remoteTaxes) => {
         if (!isSubscribed) return;
+        cyclesLoadedRef.current = true;
         isRemoteUpdate.current = true;
-        setAllCycleRecords(remoteCycles);
-        setCycleTaxes(remoteTaxes);
-        setSyncStatus('synced');
+        if (remoteCycles && Object.keys(remoteCycles).length > 0) {
+          setAllCycleRecords(remoteCycles);
+        }
+        if (remoteTaxes && Object.keys(remoteTaxes).length > 0) {
+          setCycleTaxes(remoteTaxes);
+        }
+        checkAllLoaded();
       },
-      (err) => console.error('Cycles listener error:', err)
+      (err) => {
+        console.error('Cycles listener error:', err);
+        cyclesLoadedRef.current = true;
+        checkAllLoaded();
+      }
     );
 
     // 4. Holidays Real-time listener
@@ -381,11 +393,18 @@ export default function App() {
       user.uid,
       (remoteHolidays) => {
         if (!isSubscribed) return;
+        holidaysLoadedRef.current = true;
         isRemoteUpdate.current = true;
-        setHolidays(remoteHolidays);
-        setSyncStatus('synced');
+        if (remoteHolidays && remoteHolidays.length > 0) {
+          setHolidays(remoteHolidays);
+        }
+        checkAllLoaded();
       },
-      (err) => console.error('Holidays listener error:', err)
+      (err) => {
+        console.error('Holidays listener error:', err);
+        holidaysLoadedRef.current = true;
+        checkAllLoaded();
+      }
     );
 
     // 5. Salary Increments Real-time listener
@@ -393,17 +412,23 @@ export default function App() {
       user.uid,
       (remoteIncrements) => {
         if (!isSubscribed) return;
+        incrementsLoadedRef.current = true;
         isRemoteUpdate.current = true;
-        setSalaryIncrements(remoteIncrements);
-        setSyncStatus('synced');
+        if (remoteIncrements && remoteIncrements.length > 0) {
+          setSalaryIncrements(remoteIncrements);
+        }
+        checkAllLoaded();
       },
-      (err) => console.error('Salary increments listener error:', err)
+      (err) => {
+        console.error('Salary increments listener error:', err);
+        incrementsLoadedRef.current = true;
+        checkAllLoaded();
+      }
     );
-
-    isInitialSyncDone.current = true;
 
     return () => {
       isSubscribed = false;
+      clearTimeout(fallbackTimer);
       unsubProfile();
       unsubSettings();
       unsubCycles();
@@ -412,9 +437,9 @@ export default function App() {
     };
   }, [user]);
 
-  // Sync settings to Firestore
+  // Sync settings to Firestore (Protected: Only runs after initial cloud load is complete)
   useEffect(() => {
-    if (!user || !isInitialSyncDone.current) return;
+    if (!user || !isCloudLoaded) return;
     if (isRemoteUpdate.current) {
       isRemoteUpdate.current = false;
       return;
@@ -430,11 +455,11 @@ export default function App() {
       }
     }, 600);
     return () => clearTimeout(timer);
-  }, [settings, user]);
+  }, [settings, user, isCloudLoaded]);
 
-  // Sync salary increments to Firestore
+  // Sync salary increments to Firestore (Protected: Only runs after initial cloud load is complete)
   useEffect(() => {
-    if (!user || !isInitialSyncDone.current) return;
+    if (!user || !isCloudLoaded) return;
     if (isRemoteUpdate.current) {
       isRemoteUpdate.current = false;
       return;
@@ -450,11 +475,11 @@ export default function App() {
       }
     }, 600);
     return () => clearTimeout(timer);
-  }, [salaryIncrements, user]);
+  }, [salaryIncrements, user, isCloudLoaded]);
 
-  // Sync holidays to Firestore
+  // Sync holidays to Firestore (Protected: Only runs after initial cloud load is complete)
   useEffect(() => {
-    if (!user || !isInitialSyncDone.current) return;
+    if (!user || !isCloudLoaded) return;
     if (isRemoteUpdate.current) {
       isRemoteUpdate.current = false;
       return;
@@ -470,21 +495,24 @@ export default function App() {
       }
     }, 600);
     return () => clearTimeout(timer);
-  }, [holidays, user]);
+  }, [holidays, user, isCloudLoaded]);
 
-  const handleUpdateCycleTax = (cKey: string, val: number) => {
+  const handleUpdateCycleTax = async (cKey: string, val: number) => {
     setCycleTaxes((prev) => ({
       ...prev,
       [cKey]: val,
     }));
-    if (user && isInitialSyncDone.current) {
+    if (user && isCloudLoaded) {
       setSyncStatus('saving');
-      saveUserCycle(user.uid, cKey, allCycleRecords[cKey] || currentRecords, val)
-        .then(() => setSyncStatus('synced'))
-        .catch((e) => {
-          console.error(e);
-          setSyncStatus('error');
-        });
+      try {
+        await saveUserCycle(user.uid, cKey, allCycleRecords[cKey] || currentRecords, val);
+        setSyncStatus('synced');
+        showToast('อัปเดตภาษีสำเร็จ (บันทึกบนคลาวด์)');
+      } catch (e) {
+        console.error(e);
+        setSyncStatus('error');
+        showToast('เกิดข้อผิดพลาดในการบันทึกภาษีบนคลาวด์');
+      }
     }
   };
 
@@ -502,10 +530,11 @@ export default function App() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Update year-by-year vacation quota
-  const handleUpdateYearlyVacationQuota = (
+  const handleUpdateYearlyVacationQuota = async (
     year: number,
     quotaData: { baseQuota: number; carriedOver?: number; note?: string }
   ) => {
+    let nextSettings: PayrollSettings = settings;
     setSettings((prev) => {
       const existing = prev.yearlyVacationQuotas || DEFAULT_SETTINGS.yearlyVacationQuotas || {};
       const updated = {
@@ -516,22 +545,52 @@ export default function App() {
           note: quotaData.note || '',
         },
       };
-      return {
+      nextSettings = {
         ...prev,
         yearlyVacationQuotas: updated,
       };
+      return nextSettings;
     });
-    showToast(`อัปเดตสิทธิ์วันลาพักร้อนปี ${year} เรียบร้อยแล้ว`);
+
+    if (user && isCloudLoaded) {
+      setSyncStatus('saving');
+      try {
+        await saveUserSettings(user.uid, nextSettings);
+        setSyncStatus('synced');
+        showToast(`อัปเดตสิทธิ์วันลาพักร้อนปี ${year} เรียบร้อยแล้ว (บันทึกบนคลาวด์แล้ว)`);
+      } catch (e) {
+        console.error('Failed to save vacation quota to cloud:', e);
+        setSyncStatus('error');
+        showToast(`เกิดข้อผิดพลาดในการบันทึกวันลาพักร้อนบนคลาวด์`);
+      }
+    } else {
+      showToast(`อัปเดตสิทธิ์วันลาพักร้อนปี ${year} เรียบร้อยแล้ว`);
+    }
   };
 
-  const handleBatchUpdateVacationQuotas = (
+  const handleBatchUpdateVacationQuotas = async (
     newQuotas: Record<number, { baseQuota: number; carriedOver?: number; note?: string }>
   ) => {
-    setSettings((prev) => ({
-      ...prev,
+    const nextSettings = {
+      ...settings,
       yearlyVacationQuotas: newQuotas,
-    }));
-    showToast('อัปเดตตารางสิทธิ์วันลาพักร้อนรายปีสำเร็จ');
+    };
+    setSettings(nextSettings);
+
+    if (user && isCloudLoaded) {
+      setSyncStatus('saving');
+      try {
+        await saveUserSettings(user.uid, nextSettings);
+        setSyncStatus('synced');
+        showToast('อัปเดตตารางสิทธิ์วันลาพักร้อนรายปีสำเร็จ (บันทึกบนคลาวด์แล้ว)');
+      } catch (e) {
+        console.error('Failed to batch save vacation quotas:', e);
+        setSyncStatus('error');
+        showToast('เกิดข้อผิดพลาดในการบันทึกตารางสิทธิ์วันลาพักร้อนบนคลาวด์');
+      }
+    } else {
+      showToast('อัปเดตตารางสิทธิ์วันลาพักร้อนรายปีสำเร็จ');
+    }
   };
 
   // Sync document title with customized app name
@@ -586,7 +645,7 @@ export default function App() {
   }, [hasWorkStartDate, targetMonth, targetYear, settings.cycleStartDay, settings.cycleEndDay]);
 
   // Update a single record (done through calendar)
-  const handleUpdateRecord = (updated: DailyRecord) => {
+  const handleUpdateRecord = async (updated: DailyRecord) => {
     let nextList: DailyRecord[] = [];
     setAllCycleRecords((prev) => {
       const existing = prev[cycleKey] || currentRecords;
@@ -597,20 +656,25 @@ export default function App() {
         [cycleKey]: updatedList,
       };
     });
-    if (user && isInitialSyncDone.current) {
+
+    if (user && isCloudLoaded) {
       setSyncStatus('saving');
-      saveUserCycle(user.uid, cycleKey, nextList, cycleTaxes[cycleKey])
-        .then(() => setSyncStatus('synced'))
-        .catch((e) => {
-          console.error(e);
-          setSyncStatus('error');
-        });
+      try {
+        await saveUserCycle(user.uid, cycleKey, nextList, cycleTaxes[cycleKey]);
+        setSyncStatus('synced');
+        showToast(`บันทึกข้อมูลวันที่ ${updated.dayNumber} สำเร็จ (บันทึกบนคลาวด์แล้ว)`);
+      } catch (e: any) {
+        console.error('Failed to save record to cloud:', e);
+        setSyncStatus('error');
+        showToast(`บันทึกบนคลาวด์ไม่สำเร็จ: ${e?.message || 'โปรดตรวจสอบการเชื่อมต่อ'}`);
+      }
+    } else {
+      showToast(`บันทึกข้อมูลวันที่ ${updated.dayNumber} สำเร็จ (บันทึกในเครื่อง)`);
     }
-    showToast(`อัปเดตข้อมูลวันที่ ${updated.dayNumber} สำเร็จ`);
   };
 
   // Re-apply shift pattern (2wk Day/Night & Sat A/B)
-  const handleReapplyShiftPattern = () => {
+  const handleReapplyShiftPattern = async () => {
     const fresh = createCycleRecords(targetYear, targetMonth, settings, holidays);
     const existingMap = new Map<string, DailyRecord>();
     currentRecords.forEach((r) => existingMap.set(r.date, r));
@@ -635,44 +699,90 @@ export default function App() {
       ...prev,
       [cycleKey]: merged,
     }));
-    if (user && isInitialSyncDone.current) {
+
+    if (user && isCloudLoaded) {
       setSyncStatus('saving');
-      saveUserCycle(user.uid, cycleKey, merged, cycleTaxes[cycleKey])
-        .then(() => setSyncStatus('synced'))
-        .catch((e) => {
-          console.error(e);
-          setSyncStatus('error');
-        });
+      try {
+        await saveUserCycle(user.uid, cycleKey, merged, cycleTaxes[cycleKey]);
+        setSyncStatus('synced');
+        showToast(`จัดตารางกะ ${settings.shiftGroup} สำเร็จ (บันทึกบนคลาวด์แล้ว)`);
+      } catch (e) {
+        console.error('Failed to save shift pattern to cloud:', e);
+        setSyncStatus('error');
+        showToast('เกิดข้อผิดพลาดในการบันทึกตารางกะบนคลาวด์');
+      }
+    } else {
+      showToast(`จัดตารางกะ ${settings.shiftGroup} สำเร็จ`);
     }
-    showToast(`จัดตารางกะ ${settings.shiftGroup} สำเร็จ`);
   };
 
-  // Holidays management (6: คีย์ข้อมูลขึ้นมาเอง)
-  const handleAddHoliday = (newH: Omit<Holiday, 'id'>) => {
+  // Holidays management
+  const handleAddHoliday = async (newH: Omit<Holiday, 'id'>) => {
     const id = `hol-${Date.now()}`;
     const created: Holiday = { ...newH, id };
-    setHolidays((prev) => [...prev, created]);
-    showToast(`เพิ่มวันหยุด "${created.name}" สำเร็จ`);
-  };
+    const nextHolidays = [...holidays, created];
+    setHolidays(nextHolidays);
 
-  const handleUpdateHoliday = (updatedH: Holiday) => {
-    setHolidays((prev) => prev.map((h) => (h.id === updatedH.id ? updatedH : h)));
-    showToast(`แก้ไขวันหยุด "${updatedH.name}" สำเร็จ`);
-  };
-
-  const handleDeleteHoliday = (id: string) => {
-    setHolidays((prev) => prev.filter((h) => h.id !== id));
-    if (user && isInitialSyncDone.current) {
-      deleteUserHoliday(user.uid, id).catch(console.error);
+    if (user && isCloudLoaded) {
+      setSyncStatus('saving');
+      try {
+        await saveUserHolidays(user.uid, nextHolidays);
+        setSyncStatus('synced');
+        showToast(`เพิ่มวันหยุด "${created.name}" สำเร็จ (บันทึกบนคลาวด์แล้ว)`);
+      } catch (e) {
+        console.error('Failed to save holiday to cloud:', e);
+        setSyncStatus('error');
+        showToast('เกิดข้อผิดพลาดในการบันทึกวันหยุดบนคลาวด์');
+      }
+    } else {
+      showToast(`เพิ่มวันหยุด "${created.name}" สำเร็จ`);
     }
-    showToast('ลบวันหยุดสำเร็จ');
+  };
+
+  const handleUpdateHoliday = async (updatedH: Holiday) => {
+    const nextHolidays = holidays.map((h) => (h.id === updatedH.id ? updatedH : h));
+    setHolidays(nextHolidays);
+
+    if (user && isCloudLoaded) {
+      setSyncStatus('saving');
+      try {
+        await saveUserHolidays(user.uid, nextHolidays);
+        setSyncStatus('synced');
+        showToast(`แก้ไขวันหยุด "${updatedH.name}" สำเร็จ (บันทึกบนคลาวด์แล้ว)`);
+      } catch (e) {
+        console.error('Failed to update holiday on cloud:', e);
+        setSyncStatus('error');
+        showToast('เกิดข้อผิดพลาดในการแก้ไขวันหยุดบนคลาวด์');
+      }
+    } else {
+      showToast(`แก้ไขวันหยุด "${updatedH.name}" สำเร็จ`);
+    }
+  };
+
+  const handleDeleteHoliday = async (id: string) => {
+    setHolidays((prev) => prev.filter((h) => h.id !== id));
+    if (user && isCloudLoaded) {
+      setSyncStatus('saving');
+      try {
+        await deleteUserHoliday(user.uid, id);
+        setSyncStatus('synced');
+        showToast('ลบวันหยุดสำเร็จ (บันทึกบนคลาวด์แล้ว)');
+      } catch (e) {
+        console.error('Failed to delete holiday on cloud:', e);
+        setSyncStatus('error');
+        showToast('เกิดข้อผิดพลาดในการลบวันหยุดบนคลาวด์');
+      }
+    } else {
+      showToast('ลบวันหยุดสำเร็จ');
+    }
   };
 
   // Apply holidays to current cycle
-  const handleApplyHolidaysToCurrentCycle = () => {
+  const handleApplyHolidaysToCurrentCycle = async () => {
     const holidayMap = new Map<string, Holiday>();
     holidays.forEach((h) => holidayMap.set(h.date, h));
 
+    let updatedList: DailyRecord[] = [];
     setAllCycleRecords((prev) => {
       const existing = prev[cycleKey] || currentRecords;
       const updated = existing.map((r) => {
@@ -687,12 +797,27 @@ export default function App() {
         }
         return r;
       });
+      updatedList = updated;
       return {
         ...prev,
         [cycleKey]: updated,
       };
     });
-    showToast('นำวันหยุดไปใช้กับรอบนี้สำเร็จ');
+
+    if (user && isCloudLoaded) {
+      setSyncStatus('saving');
+      try {
+        await saveUserCycle(user.uid, cycleKey, updatedList, cycleTaxes[cycleKey]);
+        setSyncStatus('synced');
+        showToast('นำวันหยุดไปใช้กับรอบนี้สำเร็จ (บันทึกบนคลาวด์แล้ว)');
+      } catch (e) {
+        console.error('Failed to apply holidays to cloud cycle:', e);
+        setSyncStatus('error');
+        showToast('เกิดข้อผิดพลาดในการบันทึกรอบวันหยุดบนคลาวด์');
+      }
+    } else {
+      showToast('นำวันหยุดไปใช้กับรอบนี้สำเร็จ');
+    }
   };
 
   // 9: When clicking day in Calendar view
@@ -1096,7 +1221,7 @@ export default function App() {
           isOpen={isSettingsModalOpen}
           onClose={() => setIsSettingsModalOpen(false)}
           settings={settings}
-          onSaveSettings={(newSettings: PayrollSettings) => {
+          onSaveSettings={async (newSettings: PayrollSettings) => {
             setSettings(newSettings);
             if (newSettings.workStartDate) {
               setAllCycleRecords((prev) => {
@@ -1114,7 +1239,21 @@ export default function App() {
                 return next;
               });
             }
-            showToast('บันทึกการตั้งค่าเรียบร้อยแล้ว');
+
+            if (user && isCloudLoaded) {
+              setSyncStatus('saving');
+              try {
+                await saveUserSettings(user.uid, newSettings);
+                setSyncStatus('synced');
+                showToast('บันทึกการตั้งค่าเรียบร้อยแล้ว (บันทึกบนคลาวด์แล้ว)');
+              } catch (e) {
+                console.error('Failed to save settings to cloud:', e);
+                setSyncStatus('error');
+                showToast('เกิดข้อผิดพลาดในการบันทึกการตั้งค่าบนคลาวด์');
+              }
+            } else {
+              showToast('บันทึกการตั้งค่าเรียบร้อยแล้ว');
+            }
           }}
         />
       )}
@@ -1138,14 +1277,29 @@ export default function App() {
           appName={settings.appName || 'OT PayMaster'}
           appIcon={settings.appIcon || 'Calculator'}
           appSubtitle={settings.appSubtitle || 'ระบบคำนวณโอทีและสลิปเงินเดือน'}
-          onSave={(newName, newIcon, newSubtitle) => {
-            setSettings((prev) => ({
-              ...prev,
+          onSave={async (newName, newIcon, newSubtitle) => {
+            const nextSettings = {
+              ...settings,
               appName: newName,
               appIcon: newIcon,
               appSubtitle: newSubtitle,
-            }));
-            showToast(`บันทึกชื่อ "${newName}" และไอคอนเรียบร้อยแล้ว`);
+            };
+            setSettings(nextSettings);
+
+            if (user && isCloudLoaded) {
+              setSyncStatus('saving');
+              try {
+                await saveUserSettings(user.uid, nextSettings);
+                setSyncStatus('synced');
+                showToast(`บันทึกชื่อ "${newName}" เรียบร้อยแล้ว (บันทึกบนคลาวด์แล้ว)`);
+              } catch (e) {
+                console.error('Failed to save branding to cloud:', e);
+                setSyncStatus('error');
+                showToast('เกิดข้อผิดพลาดในการบันทึกชื่อแบรนด์บนคลาวด์');
+              }
+            } else {
+              showToast(`บันทึกชื่อ "${newName}" และไอคอนเรียบร้อยแล้ว`);
+            }
           }}
         />
       )}

@@ -342,51 +342,19 @@ export async function fetchUserSettings(userId: string): Promise<PayrollSettings
   }
 }
 
-// Save single cycle with smart merging & conflict protection
+// Save single cycle directly and reliably to Firestore
 export async function saveUserCycle(
   userId: string, 
   cycleKey: string, 
   records: DailyRecord[], 
   taxPaid?: number
-): Promise<{ merged: boolean; conflictDay?: number }> {
+): Promise<{ success: boolean; cycleKey: string; count: number }> {
   const path = `users/${userId}/cycles/${cycleKey}`;
   try {
     const docRef = doc(db, 'users', userId, 'cycles', cycleKey);
-    
-    // Check if remote version exists to perform Day-Level Smart Merging
-    let finalRecords = records;
-    let hadConflict = false;
 
-    try {
-      const existingSnap = await getDoc(docRef);
-      if (existingSnap.exists()) {
-        const remoteData = existingSnap.data();
-        if (Array.isArray(remoteData.records) && remoteData.records.length > 0) {
-          const remoteMap = new Map<string, DailyRecord>();
-          remoteData.records.forEach((r: DailyRecord) => remoteMap.set(r.date, r));
-
-          // Merge local edits with remote changes
-          finalRecords = records.map((locRecord) => {
-            const rem = remoteMap.get(locRecord.date);
-            if (!rem) return locRecord;
-
-            // If local record is unedited default, but remote has OT, keep remote
-            const localHasOt = (Number(locRecord.ot1_0) || 0) + (Number(locRecord.ot1_5) || 0) + (Number(locRecord.ot2_0) || 0) + (Number(locRecord.ot3_0) || 0) > 0 || locRecord.shiftType !== 'NORMAL';
-            const remoteHasOt = (Number(rem.ot1_0) || 0) + (Number(rem.ot1_5) || 0) + (Number(rem.ot2_0) || 0) + (Number(rem.ot3_0) || 0) > 0 || rem.shiftType !== 'NORMAL';
-
-            if (!localHasOt && remoteHasOt) {
-              return rem;
-            }
-            return locRecord;
-          });
-        }
-      }
-    } catch (mergeErr) {
-      console.warn('Smart merge check bypassed:', mergeErr);
-    }
-
-    // Sanitize records
-    const cleanRecords = finalRecords.map((r) => ({
+    // Sanitize records ensuring exact data fidelity
+    const cleanRecords = records.map((r) => ({
       id: String(r.id),
       date: String(r.date),
       dayOfWeek: String(r.dayOfWeek),
@@ -413,7 +381,7 @@ export async function saveUserCycle(
       updatedAt: new Date().toISOString(),
     }, { merge: true });
 
-    return { merged: hadConflict };
+    return { success: true, cycleKey, count: cleanRecords.length };
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
     throw error;
