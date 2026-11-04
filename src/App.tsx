@@ -44,12 +44,14 @@ import {
   saveUserCycle, 
   fetchUserCycles, 
   saveUserHolidays, 
+  saveBulkHolidays,
   fetchUserHolidays, 
   saveUserSalaryIncrements, 
   fetchUserSalaryIncrements,
   deleteUserHoliday,
   deleteUserSalaryIncrement
 } from './services/firestoreSync';
+import { copyHolidaysToYear } from './utils/holidayManager';
 import { 
   CheckCircle,
   RefreshCw,
@@ -799,6 +801,32 @@ export default function App() {
     }
   };
 
+  // Copy holidays from previous year template
+  const handleCopyHolidaysFromYear = async (sourceYear: number, targetYear: number) => {
+    try {
+      const { newHolidays, copiedCount } = copyHolidaysToYear(holidays, sourceYear, targetYear);
+      const nextHolidays = [...holidays, ...newHolidays];
+      setHolidays(nextHolidays);
+
+      if (user && isCloudLoaded) {
+        setSyncStatus('saving');
+        try {
+          await saveBulkHolidays(user.uid, newHolidays);
+          setSyncStatus('synced');
+          showToast(`สร้างวันหยุดปี ${targetYear} จากปี ${sourceYear} สำเร็จ (${copiedCount} รายการ บันทึกบนคลาวด์แล้ว)`);
+        } catch (e) {
+          console.error('Failed to save bulk holidays to cloud:', e);
+          setSyncStatus('error');
+          showToast('เกิดข้อผิดพลาดในการบันทึกวันหยุดบนคลาวด์');
+        }
+      } else {
+        showToast(`สร้างวันหยุดปี ${targetYear} จากปี ${sourceYear} สำเร็จ (${copiedCount} รายการ)`);
+      }
+    } catch (err: any) {
+      showToast(err.message || 'ไม่สามารถคัดลอกวันหยุดได้');
+    }
+  };
+
   // Apply holidays to current cycle
   const handleApplyHolidaysToCurrentCycle = async () => {
     const holidayMap = new Map<string, Holiday>();
@@ -1181,6 +1209,7 @@ export default function App() {
               onUpdateHoliday={handleUpdateHoliday}
               onDeleteHoliday={handleDeleteHoliday}
               onApplyToCurrentCycle={handleApplyHolidaysToCurrentCycle}
+              onCopyHolidaysFromYear={handleCopyHolidaysFromYear}
             />
           </div>
         )}

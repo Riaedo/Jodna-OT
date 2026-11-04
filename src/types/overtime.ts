@@ -9,6 +9,9 @@ export interface Holiday {
   name: string;
   isCustom?: boolean;
   type?: 'PUBLIC' | 'COMPANY' | 'SPECIAL';
+  note?: string;
+  sourceYear?: number;
+  createdAt?: string;
 }
 
 export interface DailyRecord {

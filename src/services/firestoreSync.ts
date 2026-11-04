@@ -6,6 +6,7 @@ import {
   collection, 
   deleteDoc,
   onSnapshot,
+  writeBatch,
   Unsubscribe
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType, User } from '../firebase';
@@ -430,11 +431,40 @@ export async function saveUserHolidays(userId: string, holidays: Holiday[]): Pro
         name: h.name,
         type: h.type || 'COMPANY',
         isCustom: Boolean(h.isCustom),
-        createdAt: new Date().toISOString(),
+        note: h.note || '',
+        sourceYear: h.sourceYear !== undefined ? h.sourceYear : null,
+        createdAt: h.createdAt || new Date().toISOString(),
       }, { merge: true });
     }
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+// Bulk save holidays (e.g. copying an entire year of holidays)
+export async function saveBulkHolidays(userId: string, holidaysToSave: Holiday[]): Promise<void> {
+  if (!holidaysToSave || holidaysToSave.length === 0) return;
+  const path = `users/${userId}/holidays`;
+  try {
+    const batch = writeBatch(db);
+    for (const h of holidaysToSave) {
+      const docRef = doc(db, 'users', userId, 'holidays', h.id);
+      batch.set(docRef, {
+        id: h.id,
+        userId,
+        date: h.date,
+        name: h.name,
+        type: h.type || 'COMPANY',
+        isCustom: Boolean(h.isCustom),
+        note: h.note || '',
+        sourceYear: h.sourceYear !== undefined ? h.sourceYear : null,
+        createdAt: h.createdAt || new Date().toISOString(),
+      }, { merge: true });
+    }
+    await batch.commit();
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+    throw error;
   }
 }
 
