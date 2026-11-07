@@ -18,7 +18,6 @@ import { DEFAULT_HOLIDAYS } from './data/holidays';
 import { DEFAULT_SALARY_INCREMENTS } from './data/initialSalaryIncrements';
 import { Navbar } from './components/Navbar';
 import { MainMetricsCards } from './components/MainMetricsCards';
-import { MainLeaveSummary } from './components/MainLeaveSummary';
 import { OTShareCard } from './components/OTShareCard';
 import { TimesheetTable } from './components/TimesheetTable';
 import { CalendarView } from './components/CalendarView';
@@ -28,7 +27,6 @@ import { RecordModal } from './components/RecordModal';
 import { SettingsModal } from './components/SettingsModal';
 import { PaySlipModal } from './components/PaySlipModal';
 import { BrandEditModal } from './components/BrandEditModal';
-import { CycleIncomeChart } from './components/CycleIncomeChart';
 import { YearlyDashboard } from './components/YearlyDashboard';
 import { useAuth } from './context/AuthContext';
 import { 
@@ -1077,25 +1075,13 @@ export default function App() {
               onUpdateTaxPaid={(taxVal) => handleUpdateCycleTax(cycleKey, taxVal)}
             />
 
-            {/* 1: D3 Bar Chart เปรียบเทียบรายได้รวมในแต่ละรอบเดือน (Cycle) */}
-            <CycleIncomeChart
-              allCycleRecords={allCycleRecords}
-              cycleTaxes={cycleTaxes}
-              settings={currentCycleSettings}
-              currentCycleKey={cycleKey}
-              onSelectCycle={(offset) => setCycleOffset(offset)}
-            />
-
-            {/* 4: กล่องแสดงวันลาต่างๆ (ป่วย E, กิจ D, พักร้อน J, รวมวันลา, วันหยุด H) */}
-            <MainLeaveSummary
+            {/* 2: OT Share Card พร้อม Compact Horizontal Leave Summary Bar ด้านใน (อยู่ใต้ส่วน OT Share และเหนือแถวสรุปชั่วโมง OT ด้านล่าง) */}
+            <OTShareCard 
               summary={summary}
               settings={currentCycleSettings}
               cycleYear={targetYear}
               onGoToLeaveView={() => setCurrentView('leave')}
             />
-
-            {/* 2: OT Share Card (รวม Donut ทางซ้าย และกล่องสรุปชั่วโมง OT รวม ไว้ด้วยกันในที่เดียว) */}
-            <OTShareCard summary={summary} />
 
             {/* ตารางบันทึกเวลา (หน้าเดียว) */}
             <TimesheetTable

@@ -1,13 +1,24 @@
 import React from 'react';
-import { PayrollSummary } from '../types/overtime';
+import { PayrollSettings, PayrollSummary } from '../types/overtime';
 import { formatCurrency } from '../utils/calculator';
 import { PieChart, Clock, Calculator, Zap, ShieldAlert } from 'lucide-react';
+import { MainLeaveSummary } from './MainLeaveSummary';
 
 interface OTShareCardProps {
   summary: PayrollSummary;
+  settings?: PayrollSettings;
+  cycleYear?: number;
+  onGoToLeaveView?: () => void;
+  children?: React.ReactNode;
 }
 
-export const OTShareCard: React.FC<OTShareCardProps> = ({ summary }) => {
+export const OTShareCard: React.FC<OTShareCardProps> = ({ 
+  summary,
+  settings,
+  cycleYear,
+  onGoToLeaveView,
+  children,
+}) => {
   const totalHours = summary.totalOtHours || 1;
   const p1_5 = summary.totalOtHours > 0 ? (summary.totalOt1_5_hours / totalHours) * 100 : 0;
   const p1_0 = summary.totalOtHours > 0 ? (summary.totalOt1_0_hours / totalHours) * 100 : 0;
@@ -192,7 +203,20 @@ export const OTShareCard: React.FC<OTShareCardProps> = ({ summary }) => {
 
       </div>
 
-      {/* 2. Lower Integrated OT Summary Bar */}
+      {/* 2. Middle Section: Compact Horizontal Leave Summary Bar (กรอบหมายเลข 2 - ใต้ส่วน OT Share และเหนือแถวสรุปชั่วโมง OT ด้านล่าง) */}
+      {children ? (
+        children
+      ) : settings ? (
+        <MainLeaveSummary
+          summary={summary}
+          settings={settings}
+          cycleYear={cycleYear}
+          onGoToLeaveView={onGoToLeaveView}
+          embedded={true}
+        />
+      ) : null}
+
+      {/* 3. Lower Section: แถวสรุปชั่วโมง OT ด้านล่าง (Lower Integrated OT Summary Bar) */}
       <div className="p-2.5 sm:p-4 bg-slate-900 dark:bg-slate-950 text-white grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-2 sm:gap-3">
         <div className="bg-slate-800/80 dark:bg-slate-900/90 p-2 sm:p-2.5 rounded-xl border border-slate-700/80">
           <span className="text-[9px] sm:text-[10px] text-slate-400 uppercase font-semibold block truncate">
