@@ -123,6 +123,7 @@ export interface PayrollSummary {
   sickLeaveCount: number; // จำนวนวันลาป่วย (E)
   personalLeaveCount: number; // จำนวนวันลากิจ (D)
   vacationLeaveCount: number; // จำนวนวันลาพักร้อน (J)
+  qualifyingLeaveDaysCount: number; // จำนวนวันลาที่มีผลหักสวัสดิการ (ไม่รวมลาพักร้อน J)
   leaveDaysCount: number; // รวมวันลาทั้งหมด (E + D + J)
   holidayCount: number; // count of 'H'
   workDaysCount: number; // count of 'NORMAL'
@@ -131,14 +132,17 @@ export interface PayrollSummary {
   nightShiftCount: number;
 
   baseDiligenceAmount: number; // เบี้ยขยันตั้งต้น (ก่อนหัก)
-  diligenceDeduction: number; // หักเบี้ยขยัน (วันละ 500)
-  diligenceAmount: number; // เบี้ยขยัน (ในเงินได้)
+  diligenceDeduction: number; // หักเบี้ยขยัน (0%, 1/2, 100% ตามวันลาที่ไม่รวมพักร้อน)
+  diligenceAmount: number; // เบี้ยขยัน (ในเงินได้ก่อนหัก)
+  adjustedDiligenceAmount: number; // เบี้ยขยันสุทธิหลังหัก
 
   baseShiftAmount: number; // ค่าเข้ากะตั้งต้น (ก่อนหัก)
-  shiftAllowanceDeduction: number; // หักค่าเข้ากะ (วันละ 900)
-  shiftAmount: number; // ค่าเข้ากะ (ในเงินได้)
+  shiftAllowanceDeduction: number; // หักค่าเข้ากะ (0%, 1/3, 2/3, 100% ตามวันลาที่ไม่รวมพักร้อน)
+  shiftAmount: number; // ค่าเข้ากะ (ในเงินได้ก่อนหัก)
+  adjustedShiftAmount: number; // ค่าเข้ากะสุทธิหลังหัก
 
-  totalFixedAllowances: number; // รวมสวัสดิการ (บ้าน, กันดาร, อาหาร)
+  totalFixedAllowances: number; // รวมสวัสดิการคงที่ (บ้าน, กันดาร, รายวัน)
+  totalWelfareAmount: number; // รวมสวัสดิการสุทธิทั้งหมด (รวมค่ากะและเบี้ยขยันหลังหักแล้ว)
   totalGrossIncome: number; // รวมเงินได้ก่อนหักภาษี
 
   providentFundAmount: number; // หักกองทุน 2%

@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { DailyRecord, PayrollSettings, PayrollSummary, ShiftType, ShiftPeriod } from '../types/overtime';
-import { formatCurrency } from '../utils/calculator';
 import { 
   X, 
   Clock, 
@@ -10,6 +9,7 @@ import {
   Sun,
   Moon
 } from 'lucide-react';
+import { useMoneyVisibility } from '../context/MoneyVisibilityContext';
 
 interface RecordModalProps {
   record: DailyRecord | null;
@@ -28,6 +28,7 @@ export const RecordModal: React.FC<RecordModalProps> = ({
   summary,
   settings,
 }) => {
+  const { formatMoney } = useMoneyVisibility();
   const [shiftType, setShiftType] = useState<ShiftType>(record?.shiftType || 'NORMAL');
   const [shiftPeriod, setShiftPeriod] = useState<ShiftPeriod>(record?.shiftPeriod || 'DAY');
   const [ot1_5, setOt1_5] = useState<number>(record?.ot1_5 || 0);
@@ -278,8 +279,8 @@ export const RecordModal: React.FC<RecordModalProps> = ({
                 />
                 <span className="absolute right-3 top-2.5 text-xs text-slate-400">ชม.</span>
               </div>
-              <span className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 block">
-                = ฿{formatCurrency(ot1_5 * summary.ot1_5_rate)}
+              <span className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 block font-mono tabular-nums">
+                = {formatMoney(ot1_5 * summary.ot1_5_rate)}
               </span>
             </div>
 
@@ -300,8 +301,8 @@ export const RecordModal: React.FC<RecordModalProps> = ({
                 />
                 <span className="absolute right-3 top-2.5 text-xs text-slate-400">ชม.</span>
               </div>
-              <span className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 block">
-                = ฿{formatCurrency(ot1_0 * summary.ot1_0_rate)}
+              <span className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 block font-mono tabular-nums">
+                = {formatMoney(ot1_0 * summary.ot1_0_rate)}
               </span>
             </div>
 
@@ -322,8 +323,8 @@ export const RecordModal: React.FC<RecordModalProps> = ({
                 />
                 <span className="absolute right-3 top-2.5 text-xs text-slate-400">ชม.</span>
               </div>
-              <span className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 block">
-                = ฿{formatCurrency(ot3_0 * summary.ot3_0_rate)}
+              <span className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 block font-mono tabular-nums">
+                = {formatMoney(ot3_0 * summary.ot3_0_rate)}
               </span>
             </div>
           </div>
@@ -353,8 +354,8 @@ export const RecordModal: React.FC<RecordModalProps> = ({
               </span>
             </div>
             <div className="text-right">
-              <span className="text-xl font-black text-emerald-700 dark:text-emerald-400">
-                +฿{formatCurrency(todayOtPay)}
+              <span className="text-xl font-black text-emerald-700 dark:text-emerald-400 font-mono tabular-nums">
+                {formatMoney(todayOtPay, { prefix: '+฿' })}
               </span>
             </div>
           </div>

@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { DEFAULT_SETTINGS } from '../data/initialData';
 import { AVAILABLE_ICONS, renderAppIcon } from './BrandEditModal';
+import { useMoneyVisibility, MONEY_MASK } from '../context/MoneyVisibilityContext';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -28,6 +29,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   settings,
   onSaveSettings,
 }) => {
+  const { isMoneyHidden } = useMoneyVisibility();
   const [formData, setFormData] = useState<PayrollSettings>({ ...settings });
 
   useEffect(() => {
@@ -316,23 +318,40 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
           {/* Section 3: Salary & Working Hours */}
           <div className="border-t border-slate-100 dark:border-slate-800 pt-5">
-            <h4 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1.5 mb-3">
-              <DollarSign className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-              ฐานเงินเดือน & ตัวหารสูตร
-            </h4>
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+              <h4 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                <DollarSign className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                ฐานเงินเดือน & ตัวหารสูตร
+              </h4>
+              {isMoneyHidden && (
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                  โหมดซ่อนเงินเปิดอยู่ (ปิดเพื่อดู/แก้ไขตัวเลขเงิน)
+                </span>
+              )}
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="sm:col-span-1">
                 <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
                   ฐานเงินเดือน (บาท)
                 </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={formData.baseSalary > 0 ? formData.baseSalary : ''}
-                  placeholder="0.00"
-                  onChange={(e) => handleChange('baseSalary', Number(e.target.value) || 0)}
-                  className="w-full bg-emerald-50/50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-700 rounded-xl px-3 py-2 text-sm font-bold text-emerald-800 dark:text-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
+                {isMoneyHidden ? (
+                  <input
+                    type="text"
+                    readOnly
+                    value={`฿${MONEY_MASK}`}
+                    title="ปิดโหมดซ่อนเงินเพื่อดูหรือแก้ไขจำนวนเงิน"
+                    className="w-full bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-sm font-bold text-slate-500 dark:text-slate-400 font-mono cursor-not-allowed"
+                  />
+                ) : (
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={formData.baseSalary > 0 ? formData.baseSalary : ''}
+                    placeholder="0.00"
+                    onChange={(e) => handleChange('baseSalary', Number(e.target.value) || 0)}
+                    className="w-full bg-emerald-50/50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-700 rounded-xl px-3 py-2 text-sm font-bold text-emerald-800 dark:text-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                )}
                 <span className="text-[10px] text-slate-400 mt-1 block">ระบุฐานเงินเดือนหลัก</span>
               </div>
 
@@ -377,26 +396,44 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
                   ค่าบ้าน (A41)
                 </label>
-                <input
-                  type="number"
-                  value={formData.housingAllowance > 0 ? formData.housingAllowance : ''}
-                  placeholder="0.00"
-                  onChange={(e) => handleChange('housingAllowance', Number(e.target.value) || 0)}
-                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-100 focus:outline-none"
-                />
+                {isMoneyHidden ? (
+                  <input
+                    type="text"
+                    readOnly
+                    value={`฿${MONEY_MASK}`}
+                    className="w-full bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-semibold text-slate-500 dark:text-slate-400 font-mono cursor-not-allowed"
+                  />
+                ) : (
+                  <input
+                    type="number"
+                    value={formData.housingAllowance > 0 ? formData.housingAllowance : ''}
+                    placeholder="0.00"
+                    onChange={(e) => handleChange('housingAllowance', Number(e.target.value) || 0)}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-100 focus:outline-none"
+                  />
+                )}
               </div>
 
               <div>
                 <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
                   ค่ากันดาร (A10)
                 </label>
-                <input
-                  type="number"
-                  value={formData.hardshipAllowance > 0 ? formData.hardshipAllowance : ''}
-                  placeholder="0.00"
-                  onChange={(e) => handleChange('hardshipAllowance', Number(e.target.value) || 0)}
-                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-100 focus:outline-none"
-                />
+                {isMoneyHidden ? (
+                  <input
+                    type="text"
+                    readOnly
+                    value={`฿${MONEY_MASK}`}
+                    className="w-full bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-semibold text-slate-500 dark:text-slate-400 font-mono cursor-not-allowed"
+                  />
+                ) : (
+                  <input
+                    type="number"
+                    value={formData.hardshipAllowance > 0 ? formData.hardshipAllowance : ''}
+                    placeholder="0.00"
+                    onChange={(e) => handleChange('hardshipAllowance', Number(e.target.value) || 0)}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-100 focus:outline-none"
+                  />
+                )}
               </div>
 
               {/* 1.3: เบี้ยขยัน (แทน อื่นๆ) */}
@@ -404,13 +441,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
                   เบี้ยขยัน (บาท)
                 </label>
-                <input
-                  type="number"
-                  value={formData.diligenceAmount > 0 ? formData.diligenceAmount : ''}
-                  placeholder="0.00"
-                  onChange={(e) => handleChange('diligenceAmount', Number(e.target.value) || 0)}
-                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-100 focus:outline-none"
-                />
+                {isMoneyHidden ? (
+                  <input
+                    type="text"
+                    readOnly
+                    value={`฿${MONEY_MASK}`}
+                    className="w-full bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-semibold text-slate-500 dark:text-slate-400 font-mono cursor-not-allowed"
+                  />
+                ) : (
+                  <input
+                    type="number"
+                    value={formData.diligenceAmount > 0 ? formData.diligenceAmount : ''}
+                    placeholder="0.00"
+                    onChange={(e) => handleChange('diligenceAmount', Number(e.target.value) || 0)}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-100 focus:outline-none"
+                  />
+                )}
               </div>
 
               {/* 1.3: ค่าเข้ากะ (หากเลือกไม่เข้ากะ ให้บังคับเป็น "-") */}
@@ -419,13 +465,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   ค่าเข้ากะ (บาท)
                 </label>
                 {formData.shiftWorkEnabled ? (
-                  <input
-                    type="number"
-                    value={formData.shiftAmount > 0 ? formData.shiftAmount : ''}
-                    placeholder="0.00"
-                    onChange={(e) => handleChange('shiftAmount', Number(e.target.value) || 0)}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-100 focus:outline-none"
-                  />
+                  isMoneyHidden ? (
+                    <input
+                      type="text"
+                      readOnly
+                      value={`฿${MONEY_MASK}`}
+                      className="w-full bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-semibold text-slate-500 dark:text-slate-400 font-mono cursor-not-allowed"
+                    />
+                  ) : (
+                    <input
+                      type="number"
+                      value={formData.shiftAmount > 0 ? formData.shiftAmount : ''}
+                      placeholder="0.00"
+                      onChange={(e) => handleChange('shiftAmount', Number(e.target.value) || 0)}
+                      className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-100 focus:outline-none"
+                    />
+                  )
                 ) : (
                   <input
                     type="text"
@@ -467,13 +522,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
                   เพดาน ปกส. (บาท)
                 </label>
-                <input
-                  type="number"
-                  value={formData.socialSecurityCap > 0 ? formData.socialSecurityCap : ''}
-                  placeholder="875"
-                  onChange={(e) => handleChange('socialSecurityCap', Number(e.target.value) || 875)}
-                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-100 focus:outline-none"
-                />
+                {isMoneyHidden ? (
+                  <input
+                    type="text"
+                    readOnly
+                    value={`฿${MONEY_MASK}`}
+                    className="w-full bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-semibold text-slate-500 dark:text-slate-400 font-mono cursor-not-allowed"
+                  />
+                ) : (
+                  <input
+                    type="number"
+                    value={formData.socialSecurityCap > 0 ? formData.socialSecurityCap : ''}
+                    placeholder="875"
+                    onChange={(e) => handleChange('socialSecurityCap', Number(e.target.value) || 875)}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-100 focus:outline-none"
+                  />
+                )}
                 <span className="text-[10px] text-slate-400 mt-1 block">875 หรือ 750</span>
               </div>
 
@@ -481,27 +545,45 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
                   หักอื่นๆ (บาท)
                 </label>
-                <input
-                  type="number"
-                  value={formData.otherDeductions > 0 ? formData.otherDeductions : ''}
-                  placeholder="0.00"
-                  onChange={(e) => handleChange('otherDeductions', Number(e.target.value) || 0)}
-                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-100 focus:outline-none"
-                />
+                {isMoneyHidden ? (
+                  <input
+                    type="text"
+                    readOnly
+                    value={`฿${MONEY_MASK}`}
+                    className="w-full bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-semibold text-slate-500 dark:text-slate-400 font-mono cursor-not-allowed"
+                  />
+                ) : (
+                  <input
+                    type="number"
+                    value={formData.otherDeductions > 0 ? formData.otherDeductions : ''}
+                    placeholder="0.00"
+                    onChange={(e) => handleChange('otherDeductions', Number(e.target.value) || 0)}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-100 focus:outline-none"
+                  />
+                )}
               </div>
 
               <div>
                 <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
                   ภาษีที่จ่ายไป (บาท)
                 </label>
-                <input
-                  type="number"
-                  step="any"
-                  value={formData.taxPaid !== undefined && formData.taxPaid > 0 ? formData.taxPaid : ''}
-                  placeholder="0.00"
-                  onChange={(e) => handleChange('taxPaid', Math.max(0, Number(e.target.value) || 0))}
-                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-100 focus:outline-none"
-                />
+                {isMoneyHidden ? (
+                  <input
+                    type="text"
+                    readOnly
+                    value={`฿${MONEY_MASK}`}
+                    className="w-full bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-semibold text-slate-500 dark:text-slate-400 font-mono cursor-not-allowed"
+                  />
+                ) : (
+                  <input
+                    type="number"
+                    step="any"
+                    value={formData.taxPaid !== undefined && formData.taxPaid > 0 ? formData.taxPaid : ''}
+                    placeholder="0.00"
+                    onChange={(e) => handleChange('taxPaid', Math.max(0, Number(e.target.value) || 0))}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-100 focus:outline-none"
+                  />
+                )}
                 <span className="text-[10px] text-slate-400 mt-1 block">นำมาหักคำนวณเงินได้สุทธิ</span>
               </div>
             </div>

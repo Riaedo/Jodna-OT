@@ -17,11 +17,15 @@ import {
   Pencil,
   Table,
   Calendar,
-  LayoutDashboard
+  LayoutDashboard,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { PayrollSettings, AppView } from '../types/overtime';
 import { renderAppIcon } from './BrandEditModal';
 import { UserAuthButton } from './UserAuthButton';
+import { useAuth } from '../context/AuthContext';
+import { useMoneyVisibility } from '../context/MoneyVisibilityContext';
 
 interface NavbarProps {
   currentView: AppView;
@@ -84,6 +88,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   isPrevDisabled = false,
   isNextDisabled = false,
 }) => {
+  const { user } = useAuth();
+  const { isMoneyHidden, toggleMoneyVisibility } = useMoneyVisibility();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -495,8 +501,34 @@ export const Navbar: React.FC<NavbarProps> = ({
             </button>
           </div>
 
-          {/* Right Action Controls: User Auth & Action Menu */}
+          {/* Right Action Controls: Money Privacy Toggle, User Auth & Action Menu */}
           <div className="flex items-center gap-1 xs:gap-1.5 sm:gap-2 shrink-0">
+            {/* Global Show/Hide Money Display Toggle */}
+            {user && (
+              <button
+                type="button"
+                onClick={toggleMoneyVisibility}
+                data-testid="toggle-money-visibility"
+                aria-pressed={isMoneyHidden}
+                aria-label={isMoneyHidden ? 'แสดงจำนวนเงิน' : 'ซ่อนจำนวนเงิน'}
+                title={isMoneyHidden ? 'ซ่อนตัวเลขเงินอยู่ — คลิกเพื่อแสดงจำนวนเงิน' : 'คลิกเพื่อซ่อนตัวเลขเงินทั้งหมด'}
+                className={`flex items-center justify-center gap-1 p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl border transition-all active:scale-95 shrink-0 ${
+                  isMoneyHidden
+                    ? 'bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/60 dark:hover:bg-amber-900/60 border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 shadow-sm'
+                    : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 shadow-sm'
+                }`}
+              >
+                {isMoneyHidden ? (
+                  <EyeOff className="w-4 h-4 shrink-0" />
+                ) : (
+                  <Eye className="w-4 h-4 shrink-0" />
+                )}
+                <span className="hidden xl:inline-block text-xs font-bold whitespace-nowrap">
+                  {isMoneyHidden ? 'ซ่อนเงิน' : 'แสดงเงิน'}
+                </span>
+              </button>
+            )}
+
             {/* User Auth & Sync Button */}
             <UserAuthButton />
 

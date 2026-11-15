@@ -12,14 +12,20 @@ import {
 import { db, handleFirestoreError, OperationType, User } from '../firebase';
 import { DailyRecord, Holiday, PayrollSettings, SalaryIncrementRecord } from '../types/overtime';
 
-// Clear only keys starting with ot_app_ from LocalStorage
-export function clearOtAppLocalStorage(): void {
+// Clear legacy unscoped keys and optionally all local data (including queue) for a specific UID
+export function clearOtAppLocalStorage(userId?: string): void {
   if (typeof window === 'undefined' || !window.localStorage) return;
   try {
     const keysToRemove: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
-      if (key && (key.startsWith('ot_app_') || key.startsWith('gemini_supabase_'))) {
+      if (!key) continue;
+      if (userId && key.startsWith(`ot_app_u_${userId}_`)) {
+        keysToRemove.push(key);
+      } else if (
+        (key.startsWith('ot_app_') && !key.startsWith('ot_app_u_')) ||
+        key.startsWith('gemini_supabase_')
+      ) {
         keysToRemove.push(key);
       }
     }
@@ -119,10 +125,10 @@ export async function cleanStartUserCloudData(userId: string): Promise<string> {
     console.warn('Error updating resetVersion on user profile:', e);
   }
 
-  // 6. Clear Local Storage for ot_app_ on this device
-  clearOtAppLocalStorage();
+  // 6. Clear Local Storage for ONLY this userId on this device
+  clearOtAppLocalStorage(userId);
   try {
-    localStorage.setItem('ot_app_applied_reset_version', resetVersion);
+    localStorage.setItem(`ot_app_u_${userId}_applied_reset_version`, resetVersion);
   } catch (e) {
     console.error(e);
   }
@@ -151,8 +157,11 @@ export function subscribeUserProfile(
       }
     },
     (error) => {
-      handleFirestoreError(error, OperationType.GET, path);
-      if (onError) onError(error);
+      try {
+        handleFirestoreError(error, OperationType.GET, path);
+      } catch (formattedErr) {
+        if (onError) onError(formattedErr);
+      }
     }
   );
 }
@@ -177,8 +186,11 @@ export function subscribeUserSettings(
       }
     },
     (error) => {
-      handleFirestoreError(error, OperationType.GET, path);
-      if (onError) onError(error);
+      try {
+        handleFirestoreError(error, OperationType.GET, path);
+      } catch (formattedErr) {
+        if (onError) onError(formattedErr);
+      }
     }
   );
 }
@@ -220,8 +232,11 @@ export function subscribeUserCycles(
       onUpdate(cycles, cycleTaxes, updatedAtMap);
     },
     (error) => {
-      handleFirestoreError(error, OperationType.LIST, path);
-      if (onError) onError(error);
+      try {
+        handleFirestoreError(error, OperationType.LIST, path);
+      } catch (formattedErr) {
+        if (onError) onError(formattedErr);
+      }
     }
   );
 }
@@ -245,8 +260,11 @@ export function subscribeUserHolidays(
       onUpdate(holidays);
     },
     (error) => {
-      handleFirestoreError(error, OperationType.LIST, path);
-      if (onError) onError(error);
+      try {
+        handleFirestoreError(error, OperationType.LIST, path);
+      } catch (formattedErr) {
+        if (onError) onError(formattedErr);
+      }
     }
   );
 }
@@ -270,8 +288,11 @@ export function subscribeUserSalaryIncrements(
       onUpdate(increments);
     },
     (error) => {
-      handleFirestoreError(error, OperationType.LIST, path);
-      if (onError) onError(error);
+      try {
+        handleFirestoreError(error, OperationType.LIST, path);
+      } catch (formattedErr) {
+        if (onError) onError(formattedErr);
+      }
     }
   );
 }

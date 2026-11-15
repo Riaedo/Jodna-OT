@@ -1,16 +1,14 @@
 import React, { useState } from 'react';
 import { PayrollSettings, PayrollSummary } from '../types/overtime';
-import { formatCurrency, formatNumber } from '../utils/calculator';
 import { 
   X, 
   Printer, 
   Copy, 
   Check, 
   Building2, 
-  FileText, 
-  Share2,
-  Calendar
+  FileText
 } from 'lucide-react';
+import { useMoneyVisibility } from '../context/MoneyVisibilityContext';
 
 interface PaySlipModalProps {
   isOpen: boolean;
@@ -27,6 +25,7 @@ export const PaySlipModal: React.FC<PaySlipModalProps> = ({
   settings,
   cycleLabel,
 }) => {
+  const { formatMoney } = useMoneyVisibility();
   const [copied, setCopied] = useState(false);
 
   if (!isOpen) return null;
@@ -40,19 +39,19 @@ export const PaySlipModal: React.FC<PaySlipModalProps> = ({
 พนักงาน: ${settings.employeeName} (${settings.department || 'ฝ่ายปฏิบัติการ'})
 รอบตัดวิก: ${cycleLabel}
 ---------------------------------
-💰 รวมเงินได้ก่อนหัก: ฿${formatCurrency(summary.totalGrossIncome)}
-  • ฐานเงินเดือน: ฿${formatCurrency(settings.baseSalary)}
-  • ค่าล่วงเวลา OT (${summary.totalOtHours} ชม.): ฿${formatCurrency(summary.totalOtAmount)}
-    - OT 1.5x (${summary.totalOt1_5_hours} ชม.): ฿${formatCurrency(summary.ot1_5_amount)}
-    - OT 1.0x (${summary.totalOt1_0_hours} ชม.): ฿${formatCurrency(summary.ot1_0_amount)}
-    - OT 3.0x (${summary.totalOt3_0_hours} ชม.): ฿${formatCurrency(summary.ot3_0_amount)}
-  • ค่าสวัสดิการ & ค่ากะ: ฿${formatCurrency(summary.totalFixedAllowances + summary.diligenceAmount + summary.shiftAmount)}
+💰 รวมเงินได้ก่อนหัก: ${formatMoney(summary.totalGrossIncome)}
+  • ฐานเงินเดือน: ${formatMoney(settings.baseSalary)}
+  • ค่าล่วงเวลา OT (${summary.totalOtHours} ชม.): ${formatMoney(summary.totalOtAmount)}
+    - OT 1.5x (${summary.totalOt1_5_hours} ชม.): ${formatMoney(summary.ot1_5_amount)}
+    - OT 1.0x (${summary.totalOt1_0_hours} ชม.): ${formatMoney(summary.ot1_0_amount)}
+    - OT 3.0x (${summary.totalOt3_0_hours} ชม.): ${formatMoney(summary.ot3_0_amount)}
+  • ค่าสวัสดิการ & ค่ากะ: ${formatMoney(summary.totalFixedAllowances + summary.diligenceAmount + summary.shiftAmount)}
 ---------------------------------
-🔻 รายการหัก: -฿${formatCurrency(summary.totalDeductions)}
-  • กองทุนสำรองเลี้ยงชีพ (${((settings.providentFundRate || 0) * 100).toFixed(0)}%): -฿${formatCurrency(summary.providentFundAmount)}
-  • ประกันสังคม (ปกส.): -฿${formatCurrency(summary.socialSecurityAmount)}
-${summary.diligenceDeduction > 0 ? `  • หักเบี้ยขยัน (ลา ${summary.leaveDaysCount} วัน): -฿${formatCurrency(summary.diligenceDeduction)}\n` : ''}${summary.shiftAllowanceDeduction > 0 ? `  • หักค่าเข้ากะ (ลา ${summary.leaveDaysCount} วัน): -฿${formatCurrency(summary.shiftAllowanceDeduction)}\n` : ''}${summary.taxPaid > 0 ? `  • ภาษีที่จ่ายไป: -฿${formatCurrency(summary.taxPaid)}\n` : ''}${settings.otherDeductions > 0 ? `  • หักอื่นๆ: -฿${formatCurrency(settings.otherDeductions)}\n` : ''}---------------------------------
-💵 ยอดรับสุทธิ (Net Pay): ฿${formatCurrency(summary.netIncome)}
+🔻 รายการหัก: ${formatMoney(summary.totalDeductions, { prefix: '-฿' })}
+  • กองทุนสำรองเลี้ยงชีพ (${((settings.providentFundRate || 0) * 100).toFixed(0)}%): ${formatMoney(summary.providentFundAmount, { prefix: '-฿' })}
+  • ประกันสังคม (ปกส.): ${formatMoney(summary.socialSecurityAmount, { prefix: '-฿' })}
+${summary.diligenceDeduction > 0 ? `  • หักเบี้ยขยัน (ลาไม่รวมพักร้อน ${summary.qualifyingLeaveDaysCount} วัน): ${formatMoney(summary.diligenceDeduction, { prefix: '-฿' })}\n` : ''}${summary.shiftAllowanceDeduction > 0 ? `  • หักค่าเข้ากะ (ลาไม่รวมพักร้อน ${summary.qualifyingLeaveDaysCount} วัน): ${formatMoney(summary.shiftAllowanceDeduction, { prefix: '-฿' })}\n` : ''}${summary.taxPaid > 0 ? `  • ภาษีที่จ่ายไป: ${formatMoney(summary.taxPaid, { prefix: '-฿' })}\n` : ''}${settings.otherDeductions > 0 ? `  • หักอื่นๆ: ${formatMoney(settings.otherDeductions, { prefix: '-฿' })}\n` : ''}---------------------------------
+💵 ยอดรับสุทธิ (Net Pay): ${formatMoney(summary.netIncome)}
 (คำนวณอัตโนมัติด้วยระบบ OT PayMaster)`;
 
     navigator.clipboard.writeText(text);
@@ -144,7 +143,7 @@ ${summary.diligenceDeduction > 0 ? `  • หักเบี้ยขยัน (
             </div>
             <div>
               <span className="text-slate-400 block">ค่าแรง/ชม. (ฐาน/30/8):</span>
-              <strong className="text-indigo-700">฿{formatCurrency(summary.hourlyRate)}</strong>
+              <strong className="text-indigo-700 font-mono tabular-nums">{formatMoney(summary.hourlyRate)}</strong>
             </div>
           </div>
 
@@ -160,48 +159,48 @@ ${summary.diligenceDeduction > 0 ? `  • หักเบี้ยขยัน (
               <div className="divide-y divide-slate-100 text-xs p-1">
                 <div className="flex justify-between py-1.5 px-2">
                   <span>เงินเดือนประจำ (Base Salary)</span>
-                  <span className="font-semibold">฿{formatCurrency(settings.baseSalary)}</span>
+                  <span className="font-semibold font-mono tabular-nums">{formatMoney(settings.baseSalary)}</span>
                 </div>
                 <div className="flex justify-between py-1.5 px-2 text-emerald-800 font-medium">
                   <span>ค่าล่วงเวลา OT 1.5x ({summary.totalOt1_5_hours} ชม.)</span>
-                  <span>฿{formatCurrency(summary.ot1_5_amount)}</span>
+                  <span className="font-mono tabular-nums">{formatMoney(summary.ot1_5_amount)}</span>
                 </div>
                 <div className="flex justify-between py-1.5 px-2 text-blue-800 font-medium">
                   <span>ค่าล่วงเวลา OT 1.0x ({summary.totalOt1_0_hours} ชม.)</span>
-                  <span>฿{formatCurrency(summary.ot1_0_amount)}</span>
+                  <span className="font-mono tabular-nums">{formatMoney(summary.ot1_0_amount)}</span>
                 </div>
                 <div className="flex justify-between py-1.5 px-2 text-purple-800 font-medium">
                   <span>ค่าล่วงเวลา OT 3.0x ({summary.totalOt3_0_hours} ชม.)</span>
-                  <span>฿{formatCurrency(summary.ot3_0_amount)}</span>
+                  <span className="font-mono tabular-nums">{formatMoney(summary.ot3_0_amount)}</span>
                 </div>
                 {settings.housingAllowance > 0 && (
                   <div className="flex justify-between py-1.5 px-2">
                     <span>ค่าบ้าน (Housing Allowance)</span>
-                    <span>฿{formatCurrency(settings.housingAllowance)}</span>
+                    <span className="font-mono tabular-nums">{formatMoney(settings.housingAllowance)}</span>
                   </div>
                 )}
                 {settings.hardshipAllowance > 0 && (
                   <div className="flex justify-between py-1.5 px-2">
                     <span>ค่ากันดาร (Hardship Allowance)</span>
-                    <span>฿{formatCurrency(settings.hardshipAllowance)}</span>
+                    <span className="font-mono tabular-nums">{formatMoney(settings.hardshipAllowance)}</span>
                   </div>
                 )}
                 {settings.shiftWorkEnabled && summary.shiftAmount > 0 && (
                   <div className="flex justify-between py-1.5 px-2 text-indigo-700 dark:text-indigo-400">
                     <span>ค่าเข้ากะ (Shift Allowance)</span>
-                    <span>฿{formatCurrency(summary.shiftAmount)}</span>
+                    <span className="font-mono tabular-nums">{formatMoney(summary.shiftAmount)}</span>
                   </div>
                 )}
                 {summary.diligenceAmount > 0 && (
                   <div className="flex justify-between py-1.5 px-2 text-amber-700">
                     <span>เบี้ยขยัน (Diligence)</span>
-                    <span>฿{formatCurrency(summary.diligenceAmount)}</span>
+                    <span className="font-mono tabular-nums">{formatMoney(summary.diligenceAmount)}</span>
                   </div>
                 )}
               </div>
               <div className="bg-slate-50 px-3 py-2 text-xs font-bold text-slate-800 border-t border-slate-200 flex justify-between">
                 <span>รวมเงินได้ก่อนหัก</span>
-                <span className="text-emerald-700 text-sm">฿{formatCurrency(summary.totalGrossIncome)}</span>
+                <span className="text-emerald-700 text-sm font-mono tabular-nums">{formatMoney(summary.totalGrossIncome)}</span>
               </div>
             </div>
 
@@ -214,52 +213,52 @@ ${summary.diligenceDeduction > 0 ? `  • หักเบี้ยขยัน (
               <div className="divide-y divide-slate-100 text-xs p-1">
                 <div className="flex justify-between py-1.5 px-2 text-rose-700">
                   <span>กองทุนสำรองเลี้ยงชีพ ({((settings.providentFundRate || 0) * 100).toFixed(0)}%)</span>
-                  <span>-฿{formatCurrency(summary.providentFundAmount)}</span>
+                  <span className="font-mono tabular-nums">{formatMoney(summary.providentFundAmount, { prefix: '-฿' })}</span>
                 </div>
                 <div className="flex justify-between py-1.5 px-2 text-rose-700">
                   <span>เงินสมทบประกันสังคม (ปกส.)</span>
-                  <span>-฿{formatCurrency(summary.socialSecurityAmount)}</span>
+                  <span className="font-mono tabular-nums">{formatMoney(summary.socialSecurityAmount, { prefix: '-฿' })}</span>
                 </div>
-                {/* 4. หักเบี้ยขยัน: คิดจากวันลา โดยลา 1 วัน หัก 500 */}
+                {/* 4. หักเบี้ยขยัน: คิดจากวันลาที่ไม่รวมลาพักร้อน (1 วัน หัก 1/2, 2 วัน+ หัก 100%) */}
                 {summary.diligenceDeduction > 0 && (
                   <div className="flex justify-between py-1.5 px-2 text-rose-700 font-medium bg-rose-50/50">
                     <div>
                       <span>หักเบี้ยขยัน</span>
                       <span className="text-[10px] text-slate-500 block">
-                        (ขาด/ลา {summary.leaveDaysCount} วัน x ฿500)
+                        (ลาไม่รวมพักร้อน {summary.qualifyingLeaveDaysCount} วัน: หัก {summary.qualifyingLeaveDaysCount === 1 ? '1/2' : '100%'})
                       </span>
                     </div>
-                    <span>-฿{formatCurrency(summary.diligenceDeduction)}</span>
+                    <span className="font-mono tabular-nums">{formatMoney(summary.diligenceDeduction, { prefix: '-฿' })}</span>
                   </div>
                 )}
-                {/* 5. หักค่าเข้ากะ: คิดจากวันลา โดยลา 1 วัน หัก 900 */}
+                {/* 5. หักค่าเข้ากะ: คิดจากวันลาที่ไม่รวมลาพักร้อน (1 วัน หัก 1/3, 2 วัน หัก 2/3, 3 วัน+ หัก 100%) */}
                 {settings.shiftWorkEnabled && summary.shiftAllowanceDeduction > 0 && (
                   <div className="flex justify-between py-1.5 px-2 text-rose-700 font-medium bg-rose-50/50">
                     <div>
                       <span>หักค่าเข้ากะ</span>
                       <span className="text-[10px] text-slate-500 block">
-                        (ขาด/ลา {summary.leaveDaysCount} วัน x ฿900)
+                        (ลาไม่รวมพักร้อน {summary.qualifyingLeaveDaysCount} วัน: หัก {summary.qualifyingLeaveDaysCount === 1 ? '1/3' : summary.qualifyingLeaveDaysCount === 2 ? '2/3' : '100%'})
                       </span>
                     </div>
-                    <span>-฿{formatCurrency(summary.shiftAllowanceDeduction)}</span>
+                    <span className="font-mono tabular-nums">{formatMoney(summary.shiftAllowanceDeduction, { prefix: '-฿' })}</span>
                   </div>
                 )}
                 {summary.taxPaid > 0 && (
                   <div className="flex justify-between py-1.5 px-2 text-rose-700">
                     <span>ภาษีหัก ณ ที่จ่าย (ภาษีที่จ่ายไป)</span>
-                    <span>-฿{formatCurrency(summary.taxPaid)}</span>
+                    <span className="font-mono tabular-nums">{formatMoney(summary.taxPaid, { prefix: '-฿' })}</span>
                   </div>
                 )}
                 {settings.otherDeductions > 0 && (
                   <div className="flex justify-between py-1.5 px-2 text-rose-700">
                     <span>หักอื่นๆ</span>
-                    <span>-฿{formatCurrency(settings.otherDeductions)}</span>
+                    <span className="font-mono tabular-nums">{formatMoney(settings.otherDeductions, { prefix: '-฿' })}</span>
                   </div>
                 )}
               </div>
               <div className="bg-slate-50 px-3 py-2 text-xs font-bold text-slate-800 border-t border-slate-200 flex justify-between">
                 <span>รวมรายการหัก</span>
-                <span className="text-rose-600 text-sm">-฿{formatCurrency(summary.totalDeductions)}</span>
+                <span className="text-rose-600 text-sm font-mono tabular-nums">{formatMoney(summary.totalDeductions, { prefix: '-฿' })}</span>
               </div>
             </div>
 
@@ -271,13 +270,13 @@ ${summary.diligenceDeduction > 0 ? `  • หักเบี้ยขยัน (
               <span className="text-xs font-medium text-slate-300 uppercase tracking-wider block">
                 เงินได้สุทธิที่ได้รับจริง (NET TAKE-HOME PAY)
               </span>
-              <p className="text-xs text-slate-400 mt-0.5">
-                เงินได้ก่อนหักภาษี ฿{formatCurrency(summary.incomeBeforeTax)} {summary.taxPaid > 0 ? `(หักภาษี ฿${formatCurrency(summary.taxPaid)})` : ''}
+              <p className="text-xs text-slate-400 mt-0.5 tabular-nums font-mono">
+                เงินได้ก่อนหักภาษี {formatMoney(summary.incomeBeforeTax)} {summary.taxPaid > 0 ? `(หักภาษี ${formatMoney(summary.taxPaid)})` : ''}
               </p>
             </div>
             <div className="text-right">
-              <span className="text-2xl sm:text-3xl font-black text-amber-300 tracking-tight">
-                ฿{formatCurrency(summary.netIncome)}
+              <span className="text-2xl sm:text-3xl font-black text-amber-300 tracking-tight font-mono tabular-nums">
+                {formatMoney(summary.netIncome)}
               </span>
             </div>
           </div>

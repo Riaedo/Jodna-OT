@@ -67,6 +67,69 @@ export function isSaturdayOffForGroup(dateStr: string, shiftGroup: ShiftGroup = 
   }
 }
 
+/**
+ * Calculate Shift Allowance (ค่ากะ) based on qualifying (non-annual) leave days:
+ * - 0 qualifying leave days: 100% payment (0 deduction)
+ * - 1 qualifying leave day: deduct 1/3 (pay 2/3)
+ * - 2 qualifying leave days: deduct 2/3 (pay 1/3)
+ * - 3+ qualifying leave days: 0% payment (deduct 100%)
+ */
+export function calculateShiftAllowance(
+  baseAmount: number,
+  qualifyingLeaveDays: number,
+  shiftWorkEnabled = true
+): { baseAmount: number; deduction: number; adjustedAmount: number } {
+  if (!shiftWorkEnabled) {
+    return { baseAmount: 0, deduction: 0, adjustedAmount: 0 };
+  }
+  const safeBase = round2(Math.max(0, Number(baseAmount) || 0));
+  if (safeBase === 0) {
+    return { baseAmount: 0, deduction: 0, adjustedAmount: 0 };
+  }
+
+  const leaveDays = Math.max(0, Math.floor(Number(qualifyingLeaveDays) || 0));
+  let adjustedAmount = safeBase;
+
+  if (leaveDays === 1) {
+    adjustedAmount = round2((safeBase * 2) / 3);
+  } else if (leaveDays === 2) {
+    adjustedAmount = round2(safeBase / 3);
+  } else if (leaveDays >= 3) {
+    adjustedAmount = 0;
+  }
+
+  const deduction = round2(safeBase - adjustedAmount);
+  return { baseAmount: safeBase, deduction, adjustedAmount };
+}
+
+/**
+ * Calculate Attendance Allowance (ค่าเบี้ยขยัน) based on qualifying (non-annual) leave days:
+ * - 0 qualifying leave days: 100% payment (0 deduction)
+ * - 1 qualifying leave day: deduct 1/2 (pay 1/2)
+ * - 2+ qualifying leave days: 0% payment (deduct 100%)
+ */
+export function calculateAttendanceAllowance(
+  baseAmount: number,
+  qualifyingLeaveDays: number
+): { baseAmount: number; deduction: number; adjustedAmount: number } {
+  const safeBase = round2(Math.max(0, Number(baseAmount) || 0));
+  if (safeBase === 0) {
+    return { baseAmount: 0, deduction: 0, adjustedAmount: 0 };
+  }
+
+  const leaveDays = Math.max(0, Math.floor(Number(qualifyingLeaveDays) || 0));
+  let adjustedAmount = safeBase;
+
+  if (leaveDays === 1) {
+    adjustedAmount = round2(safeBase / 2);
+  } else if (leaveDays >= 2) {
+    adjustedAmount = 0;
+  }
+
+  const deduction = round2(safeBase - adjustedAmount);
+  return { baseAmount: safeBase, deduction, adjustedAmount };
+}
+
 export function calculatePayroll(records: DailyRecord[], settings: PayrollSettings): PayrollSummary {
   const daysPerMonth = settings.daysPerMonth || 30;
   const hoursPerDay = settings.hoursPerDay || 8;
@@ -92,8 +155,9 @@ export function calculatePayroll(records: DailyRecord[], settings: PayrollSettin
   let dayShiftCount = 0;
   let nightShiftCount = 0;
   let dailyCustomAllowances = 0;
+  const seenLeaveDates = new Set<string>();
 
-  records.forEach((r) => {
+  records.forEach((r, idx) => {
     // ข้ามวันก่อนเริ่มทำงาน
     if (r.isBeforeWorkStart) return;
 
@@ -102,12 +166,24 @@ export function calculatePayroll(records: DailyRecord[], settings: PayrollSettin
     totalOt2_0_hours += Number(r.ot2_0) || 0;
     totalOt3_0_hours += Number(r.ot3_0) || 0;
 
+    const leaveKey = r.date ? r.date.trim().slice(0, 10) : (r.id || `idx-${idx}`);
+
     if (r.shiftType === 'E') {
-      sickLeaveCount += 1;
+      if (!seenLeaveDates.has(leaveKey)) {
+        seenLeaveDates.add(leaveKey);
+        sickLeaveCount += 1;
+      }
     } else if (r.shiftType === 'D') {
-      personalLeaveCount += 1;
+      if (!seenLeaveDates.has(leaveKey)) {
+        seenLeaveDates.add(leaveKey);
+        personalLeaveCount += 1;
+      }
     } else if (r.shiftType === 'J') {
-      vacationLeaveCount += 1;
+      // Annual Leave (ลาพักร้อน): tracked separately and excluded from allowance deductions
+      if (!seenLeaveDates.has(leaveKey)) {
+        seenLeaveDates.add(leaveKey);
+        vacationLeaveCount += 1;
+      }
     } else if (r.shiftType === 'H') {
       holidayCount += 1;
     } else if (r.shiftType === 'NORMAL') {
@@ -125,6 +201,8 @@ export function calculatePayroll(records: DailyRecord[], settings: PayrollSettin
     if (r.shiftAllowanceDay) dailyCustomAllowances += Number(r.shiftAllowanceDay);
   });
 
+  // Qualifying leave days exclude Annual Leave ('J' / ลาพักร้อน)
+  const qualifyingLeaveDaysCount = sickLeaveCount + personalLeaveCount;
   const leaveDaysCount = sickLeaveCount + personalLeaveCount + vacationLeaveCount;
 
   totalOt1_0_hours = round2(totalOt1_0_hours);
@@ -140,27 +218,37 @@ export function calculatePayroll(records: DailyRecord[], settings: PayrollSettin
   const ot3_0_amount = round2(totalOt3_0_hours * ot3_0_rate);
   const totalOtAmount = round2(ot1_0_amount + ot1_5_amount + ot2_0_amount + ot3_0_amount);
 
-  // Diligence Allowance Calculation
-  const baseDiligenceAmount = Number(settings.diligenceAmount) || 0;
-  // User Request 4: หักเบี้ยขยัน โดยคิดจากวันลา โดยลา 1 วัน หัก 500
-  const diligenceDeduction = baseDiligenceAmount > 0 ? round2(Math.min(baseDiligenceAmount, leaveDaysCount * 500)) : 0;
+  // Attendance Allowance (เบี้ยขยัน) Calculation - independent, excluding Annual Leave
+  const diligenceCalc = calculateAttendanceAllowance(
+    Number(settings.diligenceAmount) || 0,
+    qualifyingLeaveDaysCount
+  );
+  const baseDiligenceAmount = diligenceCalc.baseAmount;
+  const diligenceDeduction = diligenceCalc.deduction;
+  const adjustedDiligenceAmount = diligenceCalc.adjustedAmount;
   const diligenceAmount = baseDiligenceAmount;
 
-  // Shift Allowance Calculation:
-  // User Request 5: เพิ่มหักค่าเข้ากะ โดยคิดจากวันลา โดยลา 1 วัน หัก 900
-  let baseShiftAmount = 0;
-  let shiftAllowanceDeduction = 0;
-  if (settings.shiftWorkEnabled) {
-    baseShiftAmount = Number(settings.shiftAmount) || 0;
-    shiftAllowanceDeduction = baseShiftAmount > 0 ? round2(Math.min(baseShiftAmount, leaveDaysCount * 900)) : 0;
-  }
+  // Shift Allowance (ค่ากะ) Calculation - independent, excluding Annual Leave
+  const shiftCalc = calculateShiftAllowance(
+    Number(settings.shiftAmount) || 0,
+    qualifyingLeaveDaysCount,
+    settings.shiftWorkEnabled
+  );
+  const baseShiftAmount = shiftCalc.baseAmount;
+  const shiftAllowanceDeduction = shiftCalc.deduction;
+  const adjustedShiftAmount = shiftCalc.adjustedAmount;
   const shiftAmount = baseShiftAmount;
 
-  // Fixed allowances (1: ตัดค่าอาหารออก ทั้งรายการได้และรายการหัก)
+  // Fixed allowances (ค่าบ้าน, ค่ากันดาร, เบี้ยพิเศษรายวัน)
   const fixedHousing = Number(settings.housingAllowance) || 0;
   const fixedHardship = Number(settings.hardshipAllowance) || 0;
   const totalFixedAllowances = round2(
     fixedHousing + fixedHardship + dailyCustomAllowances
+  );
+
+  // Final Welfare Total including adjusted Shift Allowance and Attendance Allowance
+  const totalWelfareAmount = round2(
+    totalFixedAllowances + adjustedShiftAmount + adjustedDiligenceAmount
   );
 
   // Gross Income
@@ -181,7 +269,7 @@ export function calculatePayroll(records: DailyRecord[], settings: PayrollSettin
   const ssoCap = settings.socialSecurityCap || 875;
   const socialSecurityAmount = round2(Math.min(ssoCalculated, ssoCap));
 
-  // Deductions before tax (1: ตัดค่าอาหารออก)
+  // Deductions before tax (includes welfare deductions)
   const otherDeductions = Number(settings.otherDeductions) || 0;
   const deductionsBeforeTax = round2(
     providentFundAmount +
@@ -233,6 +321,7 @@ export function calculatePayroll(records: DailyRecord[], settings: PayrollSettin
     sickLeaveCount,
     personalLeaveCount,
     vacationLeaveCount,
+    qualifyingLeaveDaysCount,
     leaveDaysCount,
     holidayCount,
     workDaysCount,
@@ -243,12 +332,15 @@ export function calculatePayroll(records: DailyRecord[], settings: PayrollSettin
     baseDiligenceAmount,
     diligenceDeduction,
     diligenceAmount,
+    adjustedDiligenceAmount,
 
     baseShiftAmount,
     shiftAllowanceDeduction,
     shiftAmount,
+    adjustedShiftAmount,
 
     totalFixedAllowances,
+    totalWelfareAmount,
     totalGrossIncome,
 
     providentFundAmount,

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { 
   auth, 
   googleProvider, 
@@ -21,6 +21,8 @@ export interface AuthErrorInfo {
   solution?: string;
 }
 
+type BeforeLogoutCallback = (uid: string | null) => void;
+
 interface AuthContextType {
   user: User | null;
   loading: boolean;
@@ -32,6 +34,7 @@ interface AuthContextType {
   signInWithGoogleRedirect: () => Promise<void>;
   signInWithGooglePopup: () => Promise<void>;
   logout: () => Promise<void>;
+  registerBeforeLogout: (cb: BeforeLogoutCallback) => () => void;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -45,6 +48,7 @@ const AuthContext = createContext<AuthContextType>({
   signInWithGoogleRedirect: async () => {},
   signInWithGooglePopup: async () => {},
   logout: async () => {},
+  registerBeforeLogout: () => () => {},
 });
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -52,6 +56,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('local');
   const [authError, setAuthError] = useState<AuthErrorInfo | null>(null);
+
+  // Monotonic sequence counter to invalidate stale async auth operations across logout / account switch
+  const authSeqRef = useRef(0);
+  const beforeLogoutCallbacksRef = useRef<Set<BeforeLogoutCallback>>(new Set());
+
+  const registerBeforeLogout = useCallback((cb: BeforeLogoutCallback) => {
+    beforeLogoutCallbacksRef.current.add(cb);
+    return () => {
+      beforeLogoutCallbacksRef.current.delete(cb);
+    };
+  }, []);
 
   const parseAuthError = (err: any): AuthErrorInfo => {
     const code = err?.code || 'auth/unknown-error';
@@ -82,21 +97,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   useEffect(() => {
+    let isMounted = true;
+
     // 1. Process result from redirect login on page mount
+    const redirectSeq = authSeqRef.current;
     getRedirectResult(auth)
       .then(async (result) => {
+        if (!isMounted) return;
         if (result?.user) {
-          setSyncStatus('saving');
+          const targetUid = result.user.uid;
+          if (auth.currentUser?.uid !== targetUid || authSeqRef.current !== redirectSeq) {
+            return;
+          }
+          setSyncStatus(typeof navigator !== 'undefined' && navigator.onLine === false ? 'offline' : 'saving');
           try {
             await syncUserProfile(result.user);
-            setSyncStatus('synced');
+            if (!isMounted || auth.currentUser?.uid !== targetUid || authSeqRef.current !== redirectSeq) {
+              return;
+            }
+            setSyncStatus(typeof navigator !== 'undefined' && navigator.onLine === false ? 'offline' : 'synced');
           } catch (e) {
             console.error('Failed to sync profile after redirect login:', e);
-            setSyncStatus('error');
+            if (!isMounted || auth.currentUser?.uid !== targetUid || authSeqRef.current !== redirectSeq) {
+              return;
+            }
+            setSyncStatus(typeof navigator !== 'undefined' && navigator.onLine === false ? 'offline' : 'error');
           }
         }
       })
       .catch((error) => {
+        if (!isMounted) return;
         console.error('Redirect sign-in error:', error);
         setAuthError(parseAuthError(error));
         setSyncStatus('error');
@@ -104,24 +134,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // 2. Auth state observer
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      if (!isMounted) return;
+      const seq = ++authSeqRef.current;
       setUser(currentUser);
+
       if (currentUser) {
-        setSyncStatus('saving');
+        const targetUid = currentUser.uid;
+        const isOffline = typeof navigator !== 'undefined' && navigator.onLine === false;
+        setSyncStatus(isOffline ? 'offline' : 'saving');
         setAuthError(null);
         try {
-          await syncUserProfile(currentUser);
-          setSyncStatus('synced');
+          if (!isOffline) {
+            await syncUserProfile(currentUser);
+          }
+          if (!isMounted || authSeqRef.current !== seq || auth.currentUser?.uid !== targetUid) {
+            return;
+          }
+          setSyncStatus(typeof navigator !== 'undefined' && navigator.onLine === false ? 'offline' : 'synced');
         } catch (e) {
           console.error('Failed to sync user profile:', e);
-          setSyncStatus('error');
+          if (!isMounted || authSeqRef.current !== seq || auth.currentUser?.uid !== targetUid) {
+            return;
+          }
+          setSyncStatus(typeof navigator !== 'undefined' && navigator.onLine === false ? 'offline' : 'error');
         }
       } else {
         setSyncStatus('local');
       }
-      setLoading(false);
+      if (isMounted && authSeqRef.current === seq) {
+        setLoading(false);
+      }
     });
 
-    return () => unsubscribe();
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
   }, []);
 
   const clearAuthError = () => {
@@ -149,8 +197,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const res = await signInWithPopup(auth, googleProvider);
       if (res.user) {
+        const targetUid = res.user.uid;
+        const seq = authSeqRef.current;
         await syncUserProfile(res.user);
-        setSyncStatus('synced');
+        if (authSeqRef.current === seq && auth.currentUser?.uid === targetUid) {
+          setSyncStatus('synced');
+        }
       }
     } catch (error: any) {
       console.error('signInWithPopup failed:', error);
@@ -188,11 +240,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = async () => {
+    const previousUid = auth.currentUser?.uid ?? user?.uid ?? null;
+    // Invalidate all in-flight async auth work immediately
+    authSeqRef.current += 1;
+
+    // Synchronously flush pending timers/offline queue & wipe UI/local display state
+    beforeLogoutCallbacksRef.current.forEach((cb) => {
+      try {
+        cb(previousUid);
+      } catch (e) {
+        console.error('Error in beforeLogout callback:', e);
+      }
+    });
+
+    setUser(null);
+    setAuthError(null);
+    setSyncStatus('local');
+
     try {
       await signOut(auth);
-      setUser(null);
-      setAuthError(null);
-      setSyncStatus('local');
     } catch (error) {
       console.error('Sign out failed:', error);
       throw error;
@@ -212,6 +278,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         signInWithGoogleRedirect,
         signInWithGooglePopup,
         logout,
+        registerBeforeLogout,
       }}
     >
       {children}

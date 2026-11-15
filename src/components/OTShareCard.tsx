@@ -1,8 +1,8 @@
 import React from 'react';
 import { PayrollSettings, PayrollSummary } from '../types/overtime';
-import { formatCurrency } from '../utils/calculator';
-import { PieChart, Clock, Calculator, Zap, ShieldAlert } from 'lucide-react';
+import { PieChart, Clock } from 'lucide-react';
 import { MainLeaveSummary } from './MainLeaveSummary';
+import { useMoneyVisibility } from '../context/MoneyVisibilityContext';
 
 interface OTShareCardProps {
   summary: PayrollSummary;
@@ -19,6 +19,7 @@ export const OTShareCard: React.FC<OTShareCardProps> = ({
   onGoToLeaveView,
   children,
 }) => {
+  const { formatMoney } = useMoneyVisibility();
   const totalHours = summary.totalOtHours || 1;
   const p1_5 = summary.totalOtHours > 0 ? (summary.totalOt1_5_hours / totalHours) * 100 : 0;
   const p1_0 = summary.totalOtHours > 0 ? (summary.totalOt1_0_hours / totalHours) * 100 : 0;
@@ -127,7 +128,7 @@ export const OTShareCard: React.FC<OTShareCardProps> = ({
             </p>
             <div className="mt-2.5 inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-2.5 py-1 rounded-lg">
               <Clock className="w-3.5 h-3.5 text-indigo-500" />
-              <span>เรทฐาน OT: ฿{formatCurrency(summary.hourlyRate)}/ชม.</span>
+              <span>เรทฐาน OT: {formatMoney(summary.hourlyRate)}/ชม.</span>
             </div>
           </div>
         </div>
@@ -150,8 +151,8 @@ export const OTShareCard: React.FC<OTShareCardProps> = ({
                   ({p1_5.toFixed(1)}%)
                 </span>
               </div>
-              <span className="text-xs font-bold text-emerald-700 dark:text-emerald-300 block mt-0.5">
-                ฿{formatCurrency(summary.ot1_5_amount)}
+              <span className="text-xs font-bold text-emerald-700 dark:text-emerald-300 block mt-0.5 tabular-nums font-mono">
+                {formatMoney(summary.ot1_5_amount)}
               </span>
             </div>
           </div>
@@ -172,8 +173,8 @@ export const OTShareCard: React.FC<OTShareCardProps> = ({
                   ({p1_0.toFixed(1)}%)
                 </span>
               </div>
-              <span className="text-xs font-bold text-blue-700 dark:text-blue-300 block mt-0.5">
-                ฿{formatCurrency(summary.ot1_0_amount)}
+              <span className="text-xs font-bold text-blue-700 dark:text-blue-300 block mt-0.5 tabular-nums font-mono">
+                {formatMoney(summary.ot1_0_amount)}
               </span>
             </div>
           </div>
@@ -194,8 +195,8 @@ export const OTShareCard: React.FC<OTShareCardProps> = ({
                   ({p3_0.toFixed(1)}%)
                 </span>
               </div>
-              <span className="text-xs font-bold text-purple-700 dark:text-purple-300 block mt-0.5">
-                ฿{formatCurrency(summary.ot3_0_amount)}
+              <span className="text-xs font-bold text-purple-700 dark:text-purple-300 block mt-0.5 tabular-nums font-mono">
+                {formatMoney(summary.ot3_0_amount)}
               </span>
             </div>
           </div>
@@ -215,54 +216,6 @@ export const OTShareCard: React.FC<OTShareCardProps> = ({
           embedded={true}
         />
       ) : null}
-
-      {/* 3. Lower Section: แถวสรุปชั่วโมง OT ด้านล่าง (Lower Integrated OT Summary Bar) */}
-      <div className="p-2.5 sm:p-4 bg-slate-900 dark:bg-slate-950 text-white grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-2 sm:gap-3">
-        <div className="bg-slate-800/80 dark:bg-slate-900/90 p-2 sm:p-2.5 rounded-xl border border-slate-700/80">
-          <span className="text-[9px] sm:text-[10px] text-slate-400 uppercase font-semibold block truncate">
-            ชั่วโมง OT รวม
-          </span>
-          <span className="text-sm sm:text-base font-black text-emerald-400 truncate block">
-            {summary.totalOtHours} ชม.
-          </span>
-        </div>
-
-        <div className="bg-slate-800/80 dark:bg-slate-900/90 p-2 sm:p-2.5 rounded-xl border border-slate-700/80">
-          <span className="text-[9px] sm:text-[10px] text-slate-400 uppercase font-semibold block truncate">
-            ค่า OT รวมทั้งสิ้น
-          </span>
-          <span className="text-sm sm:text-base font-black text-emerald-300 truncate block">
-            ฿{formatCurrency(summary.totalOtAmount)}
-          </span>
-        </div>
-
-        <div className="bg-slate-800/80 dark:bg-slate-900/90 p-2 sm:p-2.5 rounded-xl border border-slate-700/80">
-          <span className="text-[9px] sm:text-[10px] text-slate-400 uppercase font-semibold block truncate">
-            ค่า OT 1.5 รวม
-          </span>
-          <span className="text-sm sm:text-base font-black text-emerald-400 truncate block">
-            ฿{formatCurrency(summary.ot1_5_amount)}
-          </span>
-        </div>
-
-        <div className="bg-slate-800/80 dark:bg-slate-900/90 p-2 sm:p-2.5 rounded-xl border border-slate-700/80">
-          <span className="text-[9px] sm:text-[10px] text-slate-400 uppercase font-semibold block truncate">
-            ค่า OT 1.0 รวม
-          </span>
-          <span className="text-sm sm:text-base font-black text-blue-300 truncate block">
-            ฿{formatCurrency(summary.ot1_0_amount)}
-          </span>
-        </div>
-
-        <div className="col-span-2 sm:col-span-4 lg:col-span-1 bg-slate-800/80 dark:bg-slate-900/90 p-2 sm:p-2.5 rounded-xl border border-slate-700/80 flex items-center justify-between lg:block">
-          <span className="text-[9px] sm:text-[10px] text-slate-400 uppercase font-semibold block truncate">
-            ค่า OT 3.0 รวม
-          </span>
-          <span className="text-sm sm:text-base font-black text-purple-300 truncate block">
-            ฿{formatCurrency(summary.ot3_0_amount)}
-          </span>
-        </div>
-      </div>
 
     </div>
   );

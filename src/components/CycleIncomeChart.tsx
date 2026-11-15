@@ -1,8 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import * as d3 from 'd3';
 import { DailyRecord, PayrollSettings, PayrollSummary } from '../types/overtime';
-import { calculatePayroll, createCycleRecords, formatCurrency } from '../utils/calculator';
+import { calculatePayroll, createCycleRecords } from '../utils/calculator';
 import { BarChart3, TrendingUp, Info } from 'lucide-react';
+import { useMoneyVisibility, MONEY_MASK } from '../context/MoneyVisibilityContext';
 
 interface CycleIncomeChartProps {
   allCycleRecords: Record<string, DailyRecord[]>;
@@ -34,6 +35,7 @@ export const CycleIncomeChart: React.FC<CycleIncomeChartProps> = ({
   currentCycleKey,
   onSelectCycle,
 }) => {
+  const { isMoneyHidden, formatMoney } = useMoneyVisibility();
   // View mode: 'grouped' (Gross vs Net vs Tax), 'net' (Net Only), 'tax' (Tax Only), or 'ot' (OT Only)
   const [chartMode, setChartMode] = useState<'grouped' | 'net' | 'tax' | 'ot'>('grouped');
   const [hoveredPoint, setHoveredPoint] = useState<CycleDataPoint | null>(null);
@@ -220,12 +222,12 @@ export const CycleIncomeChart: React.FC<CycleIncomeChartProps> = ({
           <span className="font-bold text-slate-800 dark:text-slate-200">
             {activePoint.shortLabel}
           </span>
-          <span className="font-black text-emerald-600 dark:text-emerald-400">
-            สุทธิ: ฿{formatCurrency(activePoint.net)}
+          <span className="font-black text-emerald-600 dark:text-emerald-400 font-mono">
+            สุทธิ: {formatMoney(activePoint.net)}
           </span>
           {activePoint.tax > 0 && (
-            <span className="font-bold text-rose-500 dark:text-rose-400">
-              (ภาษี: ฿{formatCurrency(activePoint.tax)})
+            <span className="font-bold text-rose-500 dark:text-rose-400 font-mono">
+              (ภาษี: {formatMoney(activePoint.tax)})
             </span>
           )}
         </div>
@@ -234,13 +236,13 @@ export const CycleIncomeChart: React.FC<CycleIncomeChartProps> = ({
           <div className="flex items-center gap-1 font-medium text-[10px]">
             <span className="text-slate-400">เทียบกับรอบ {prevPoint.shortLabel}:</span>
             <span
-              className={`flex items-center gap-0.5 font-bold ${
+              className={`flex items-center gap-0.5 font-bold font-mono ${
                 diffNet >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-500'
               }`}
             >
               <TrendingUp className={`w-3 h-3 ${diffNet < 0 ? 'rotate-180' : ''}`} />
               <span>
-                {diffNet >= 0 ? '+' : ''}฿{formatCurrency(diffNet)} ({diffPercent >= 0 ? '+' : ''}
+                {formatMoney(Math.abs(diffNet), { prefix: `${diffNet >= 0 ? '+' : '-'}฿` })} ({diffPercent >= 0 ? '+' : ''}
                 {diffPercent.toFixed(1)}%)
               </span>
             </span>
@@ -310,7 +312,7 @@ export const CycleIncomeChart: React.FC<CycleIncomeChartProps> = ({
                     textAnchor="end"
                     className="fill-slate-400 dark:fill-slate-500 text-[8px] font-medium"
                   >
-                    ฿{(tickVal / 1000).toFixed(0)}k
+                    {isMoneyHidden ? '฿•••' : `฿${(tickVal / 1000).toFixed(0)}k`}
                   </text>
                 </g>
               );
@@ -461,7 +463,7 @@ export const CycleIncomeChart: React.FC<CycleIncomeChartProps> = ({
                       textAnchor="middle"
                       className="fill-emerald-700 dark:fill-emerald-400 text-[8px] font-black"
                     >
-                      ฿{(d.net / 1000).toFixed(1)}k
+                      {isMoneyHidden ? `฿${MONEY_MASK}` : `฿${(d.net / 1000).toFixed(1)}k`}
                     </text>
 
                     <text
@@ -518,7 +520,7 @@ export const CycleIncomeChart: React.FC<CycleIncomeChartProps> = ({
                       textAnchor="middle"
                       className="fill-rose-700 dark:fill-rose-400 text-[8px] font-black"
                     >
-                      {d.tax > 0 ? `฿${formatCurrency(d.tax)}` : '฿0'}
+                      {isMoneyHidden ? `฿${MONEY_MASK}` : (d.tax > 0 ? formatMoney(d.tax) : '฿0')}
                     </text>
 
                     <text
@@ -617,32 +619,32 @@ export const CycleIncomeChart: React.FC<CycleIncomeChartProps> = ({
                   <span className="w-1.5 h-1.5 rounded-xs bg-indigo-500 inline-block"></span>
                   รายได้รวมก่อนหัก:
                 </span>
-                <span className="font-bold text-slate-100">฿{formatCurrency(hoveredPoint.gross)}</span>
+                <span className="font-bold text-slate-100 font-mono">{formatMoney(hoveredPoint.gross)}</span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-emerald-400 flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-xs bg-emerald-500 inline-block"></span>
                   เงินได้สุทธิ:
                 </span>
-                <span className="font-black text-emerald-400">฿{formatCurrency(hoveredPoint.net)}</span>
+                <span className="font-black text-emerald-400 font-mono">{formatMoney(hoveredPoint.net)}</span>
               </div>
               <div className="flex justify-between items-center text-[10px] text-rose-300">
                 <span className="flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-xs bg-rose-500 inline-block"></span>
                   ภาษีที่จ่าย:
                 </span>
-                <span className="font-bold text-rose-400">-฿{formatCurrency(hoveredPoint.tax)}</span>
+                <span className="font-bold text-rose-400 font-mono">{formatMoney(hoveredPoint.tax, { prefix: '-฿' })}</span>
               </div>
               <div className="flex justify-between items-center text-[10px]">
                 <span className="text-amber-400 flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-xs bg-amber-500 inline-block"></span>
                   ค่า OT ({hoveredPoint.otHours} ชม.):
                 </span>
-                <span className="font-semibold text-amber-300">฿{formatCurrency(hoveredPoint.ot)}</span>
+                <span className="font-semibold text-amber-300 font-mono">{formatMoney(hoveredPoint.ot)}</span>
               </div>
               <div className="flex justify-between items-center text-[9px] text-slate-400 pt-0.5 border-t border-slate-800">
                 <span>รวมรายการหักทั้งหมด:</span>
-                <span>-฿{formatCurrency(hoveredPoint.deductions)}</span>
+                <span className="font-mono">{formatMoney(hoveredPoint.deductions, { prefix: '-฿' })}</span>
               </div>
             </div>
           </div>

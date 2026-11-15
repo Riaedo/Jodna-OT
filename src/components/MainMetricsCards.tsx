@@ -1,7 +1,7 @@
 import React from 'react';
 import { PayrollSettings, PayrollSummary } from '../types/overtime';
-import { formatCurrency } from '../utils/calculator';
 import { Wallet, DollarSign, Clock, Gift, ArrowUpRight, ShieldCheck, Receipt } from 'lucide-react';
+import { useMoneyVisibility, MONEY_MASK } from '../context/MoneyVisibilityContext';
 
 interface MainMetricsCardsProps {
   summary: PayrollSummary;
@@ -18,6 +18,7 @@ export const MainMetricsCards: React.FC<MainMetricsCardsProps> = ({
   onOpenPaySlip,
   onUpdateTaxPaid,
 }) => {
+  const { isMoneyHidden, formatMoney } = useMoneyVisibility();
   const currentTax = cycleTaxPaid !== undefined ? cycleTaxPaid : (settings.taxPaid || 0);
 
   return (
@@ -44,7 +45,9 @@ export const MainMetricsCards: React.FC<MainMetricsCardsProps> = ({
           <div className="mt-1 sm:mt-1.5">
             <div className="text-base xs:text-lg sm:text-2xl font-black tracking-tight text-white flex items-baseline gap-0.5 truncate">
               <span className="text-xs sm:text-base font-bold text-emerald-400">฿</span>
-              <span className="truncate text-emerald-300 tabular-nums font-mono">{formatCurrency(summary.netIncome)}</span>
+              <span className="truncate text-emerald-300 tabular-nums font-mono">
+                {formatMoney(summary.netIncome, { prefix: '' })}
+              </span>
             </div>
             <p className="text-[9px] sm:text-[10px] text-slate-300 mt-0.5 flex items-center justify-between">
               <span className="truncate">(ก่อนหัก - ภาษี)</span>
@@ -64,21 +67,30 @@ export const MainMetricsCards: React.FC<MainMetricsCardsProps> = ({
           </span>
           <div className="flex items-center gap-0.5 bg-black/40 px-1.5 py-0.5 rounded-lg border border-indigo-400/40 focus-within:border-emerald-400 focus-within:bg-black/60 transition-colors flex-1 xs:flex-none justify-end">
             <span className="text-[10px] text-indigo-300 font-bold">฿</span>
-            <input
-              type="number"
-              min="0"
-              step="any"
-              value={currentTax > 0 ? currentTax : ''}
-              placeholder="0.00"
-              onChange={(e) => {
-                const val = e.target.value === '' ? 0 : Math.max(0, Number(e.target.value) || 0);
-                if (onUpdateTaxPaid) {
-                  onUpdateTaxPaid(val);
-                }
-              }}
-              className="w-14 sm:w-20 bg-transparent text-white font-bold text-[11px] text-right focus:outline-none placeholder-slate-500"
-              title="ระบุภาษีที่จ่ายไป เพื่อนำมาหักคำนวณเงินได้สุทธิของรอบเดือนนี้"
-            />
+            {isMoneyHidden ? (
+              <span
+                className="w-14 sm:w-20 text-white font-bold text-[11px] text-right font-mono select-none py-0.5"
+                title="ปิดโหมดซ่อนเงินเพื่อดูหรือแก้ไขจำนวนภาษี"
+              >
+                {MONEY_MASK}
+              </span>
+            ) : (
+              <input
+                type="number"
+                min="0"
+                step="any"
+                value={currentTax > 0 ? currentTax : ''}
+                placeholder="0.00"
+                onChange={(e) => {
+                  const val = e.target.value === '' ? 0 : Math.max(0, Number(e.target.value) || 0);
+                  if (onUpdateTaxPaid) {
+                    onUpdateTaxPaid(val);
+                  }
+                }}
+                className="w-14 sm:w-20 bg-transparent text-white font-bold text-[11px] text-right focus:outline-none placeholder-slate-500"
+                title="ระบุภาษีที่จ่ายไป เพื่อนำมาหักคำนวณเงินได้สุทธิของรอบเดือนนี้"
+              />
+            )}
           </div>
         </div>
       </div>
@@ -98,17 +110,21 @@ export const MainMetricsCards: React.FC<MainMetricsCardsProps> = ({
           <div className="mt-1 sm:mt-1.5">
             <div className="text-base xs:text-lg sm:text-2xl font-black tracking-tight text-slate-900 dark:text-white flex items-baseline gap-0.5 truncate">
               <span className="text-xs sm:text-base font-bold text-slate-400">฿</span>
-              <span className="truncate tabular-nums font-mono">{formatCurrency(summary.incomeBeforeTax)}</span>
+              <span className="truncate tabular-nums font-mono">
+                {formatMoney(summary.incomeBeforeTax, { prefix: '' })}
+              </span>
             </div>
-            <p className="text-[9px] sm:text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">
-              ก่อนหักภาษี ฿{formatCurrency(summary.taxPaid)}
+            <p className="text-[9px] sm:text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 truncate tabular-nums font-mono">
+              ก่อนหักภาษี {formatMoney(summary.taxPaid)}
             </p>
           </div>
         </div>
 
         <div className="mt-2 pt-1.5 border-t border-slate-100 dark:border-slate-800 text-[10px] text-slate-500 dark:text-slate-400 flex items-center justify-between">
           <span className="truncate">ฐานเงินเดือนรอบนี้:</span>
-          <span className="font-bold text-indigo-600 dark:text-indigo-400 font-mono ml-1 shrink-0">฿{formatCurrency(settings.baseSalary)}</span>
+          <span className="font-bold text-indigo-600 dark:text-indigo-400 font-mono ml-1 shrink-0 tabular-nums">
+            {formatMoney(settings.baseSalary)}
+          </span>
         </div>
       </div>
 
@@ -127,7 +143,9 @@ export const MainMetricsCards: React.FC<MainMetricsCardsProps> = ({
           <div className="mt-1 sm:mt-1.5">
             <div className="text-base xs:text-lg sm:text-2xl font-black tracking-tight text-emerald-600 dark:text-emerald-400 flex items-baseline gap-0.5 truncate">
               <span className="text-xs sm:text-base font-bold">฿</span>
-              <span className="truncate tabular-nums font-mono">{formatCurrency(summary.totalOtAmount)}</span>
+              <span className="truncate tabular-nums font-mono">
+                {formatMoney(summary.totalOtAmount, { prefix: '' })}
+              </span>
             </div>
             <p className="text-[9px] sm:text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">
               จาก <strong>{summary.totalOtHours} ชม.</strong>
@@ -135,8 +153,8 @@ export const MainMetricsCards: React.FC<MainMetricsCardsProps> = ({
           </div>
         </div>
 
-        <div className="mt-2 pt-1.5 border-t border-slate-100 dark:border-slate-800 text-[10px] text-slate-500 dark:text-slate-400 truncate">
-          <span>1.5x: ฿{formatCurrency(summary.ot1_5_amount)}</span>
+        <div className="mt-2 pt-1.5 border-t border-slate-100 dark:border-slate-800 text-[10px] text-slate-500 dark:text-slate-400 truncate tabular-nums font-mono">
+          <span>1.5x: {formatMoney(summary.ot1_5_amount)}</span>
         </div>
       </div>
 
@@ -155,7 +173,9 @@ export const MainMetricsCards: React.FC<MainMetricsCardsProps> = ({
           <div className="mt-1 sm:mt-1.5">
             <div className="text-base xs:text-lg sm:text-2xl font-black tracking-tight text-slate-900 dark:text-white flex items-baseline gap-0.5 truncate">
               <span className="text-xs sm:text-base font-bold text-purple-500">฿</span>
-              <span className="truncate tabular-nums font-mono">{formatCurrency(summary.totalFixedAllowances)}</span>
+              <span className="truncate tabular-nums font-mono">
+                {formatMoney(summary.totalWelfareAmount, { prefix: '' })}
+              </span>
             </div>
             <p className="text-[9px] sm:text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">
               บ้าน, กันดาร, ค่ากะ, เบี้ยขยัน
@@ -163,8 +183,8 @@ export const MainMetricsCards: React.FC<MainMetricsCardsProps> = ({
           </div>
         </div>
 
-        <div className="mt-2 pt-1.5 border-t border-slate-100 dark:border-slate-800 text-[10px] text-slate-500 dark:text-slate-400 truncate">
-          <span>ค่าบ้าน ฿{formatCurrency(settings.housingAllowance)}</span>
+        <div className="mt-2 pt-1.5 border-t border-slate-100 dark:border-slate-800 text-[10px] text-slate-500 dark:text-slate-400 truncate tabular-nums font-mono">
+          <span>ค่าบ้าน {formatMoney(settings.housingAllowance)}</span>
         </div>
       </div>
 

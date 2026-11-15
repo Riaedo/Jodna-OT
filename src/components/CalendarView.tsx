@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { DailyRecord, PayrollSettings, PayrollSummary } from '../types/overtime';
 import { formatCurrency } from '../utils/calculator';
 import { Calendar as CalendarIcon, Plus } from 'lucide-react';
+import { useMoneyVisibility, MONEY_MASK } from '../context/MoneyVisibilityContext';
 
 interface CalendarViewProps {
   records: DailyRecord[];
@@ -18,6 +19,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
   onSelectDate,
   latestDate,
 }) => {
+  const { isMoneyHidden } = useMoneyVisibility();
   const hasWorkStartDate = Boolean(settings.workStartDate && settings.workStartDate.trim() !== '');
 
   const { leadingPadding, trailingPadding } = useMemo(() => {
@@ -284,8 +286,10 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                       ยังไม่เริ่มงาน
                     </span>
                   ) : dayEarn > 0 ? (
-                    <span className="font-bold text-emerald-600 dark:text-emerald-400 truncate">
-                      +฿{dayEarn >= 1000 ? Math.round(dayEarn) : formatCurrency(dayEarn)}
+                    <span className="font-bold text-emerald-600 dark:text-emerald-400 truncate font-mono tabular-nums">
+                      {isMoneyHidden
+                        ? `+฿${MONEY_MASK}`
+                        : `+฿${dayEarn >= 1000 ? Math.round(dayEarn) : formatCurrency(dayEarn)}`}
                     </span>
                   ) : (
                     <span className="text-slate-400 dark:text-slate-500 truncate">

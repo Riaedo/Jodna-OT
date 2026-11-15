@@ -24,6 +24,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { SalaryIncrementSection } from './SalaryIncrementSection';
+import { useMoneyVisibility } from '../context/MoneyVisibilityContext';
 
 interface YearlyDashboardProps {
   allCycleRecords: Record<string, DailyRecord[]>;
@@ -79,6 +80,7 @@ export const YearlyDashboard: React.FC<YearlyDashboardProps> = ({
   onNavigateToCycle,
   onUpdateBaseSalary,
 }) => {
+  const { isMoneyHidden, formatMoney } = useMoneyVisibility();
   const hasWorkStartDate = Boolean(settings.workStartDate && settings.workStartDate.trim() !== '');
 
   // 3. วันที่ รอบเดือน รอบปี ต่างๆ ให้เริ่มแสดงจากวันที่เริ่มทำงาน และแสดงจนถึงวันที่ รอบเดือน รอบปี ล่าสุดเท่านั้น
@@ -292,6 +294,13 @@ export const YearlyDashboard: React.FC<YearlyDashboardProps> = ({
     document.body.removeChild(link);
   };
 
+  // Close inline tax editor whenever Privacy Mode is activated
+  useEffect(() => {
+    if (isMoneyHidden) {
+      setEditingCycleKey(null);
+    }
+  }, [isMoneyHidden]);
+
   // Save per-cycle tax update
   const handleSaveTax = (cycleKey: string) => {
     const val = Math.max(0, Number(editingTaxInput) || 0);
@@ -396,10 +405,10 @@ export const YearlyDashboard: React.FC<YearlyDashboardProps> = ({
           <div className="mt-1.5 sm:mt-2">
             <div className="text-base xs:text-lg sm:text-2xl font-black tracking-tight text-white flex items-baseline gap-0.5 truncate">
               <span className="text-xs sm:text-base font-bold text-emerald-400">฿</span>
-              <span className="text-emerald-300 tabular-nums font-mono truncate">{formatCurrency(activeMetrics.net)}</span>
+              <span className="text-emerald-300 tabular-nums font-mono truncate">{formatMoney(activeMetrics.net, { prefix: '' })}</span>
             </div>
-            <p className="text-[9px] sm:text-[10px] text-slate-300 mt-0.5 truncate">
-              หักภาษี ฿{formatCurrency(activeMetrics.tax)} แล้ว
+            <p className="text-[9px] sm:text-[10px] text-slate-300 mt-0.5 truncate font-mono tabular-nums">
+              หักภาษี {formatMoney(activeMetrics.tax)} แล้ว
             </p>
           </div>
         </div>
@@ -418,7 +427,7 @@ export const YearlyDashboard: React.FC<YearlyDashboardProps> = ({
           <div className="mt-1.5 sm:mt-2">
             <div className="text-base xs:text-lg sm:text-2xl font-black tracking-tight text-slate-900 dark:text-white flex items-baseline gap-0.5 truncate">
               <span className="text-xs sm:text-base font-bold text-slate-400">฿</span>
-              <span className="tabular-nums font-mono truncate">{formatCurrency(activeMetrics.beforeTax)}</span>
+              <span className="tabular-nums font-mono truncate">{formatMoney(activeMetrics.beforeTax, { prefix: '' })}</span>
             </div>
             <p className="text-[9px] sm:text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">
               ฐานเงินเดือน + โอที + ค่ากะ
@@ -440,7 +449,7 @@ export const YearlyDashboard: React.FC<YearlyDashboardProps> = ({
           <div className="mt-1.5 sm:mt-2">
             <div className="text-base xs:text-lg sm:text-2xl font-black tracking-tight text-amber-600 dark:text-amber-400 flex items-baseline gap-0.5 truncate">
               <span className="text-xs sm:text-base font-bold">฿</span>
-              <span className="tabular-nums font-mono truncate">{formatCurrency(activeMetrics.ot)}</span>
+              <span className="tabular-nums font-mono truncate">{formatMoney(activeMetrics.ot, { prefix: '' })}</span>
             </div>
             <p className="text-[9px] sm:text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">
               รวมชั่วโมง OT ทั้งปี
@@ -462,7 +471,7 @@ export const YearlyDashboard: React.FC<YearlyDashboardProps> = ({
           <div className="mt-1.5 sm:mt-2">
             <div className="text-base xs:text-lg sm:text-2xl font-black tracking-tight text-rose-600 dark:text-rose-400 flex items-baseline gap-0.5 truncate">
               <span className="text-xs sm:text-base font-bold">฿</span>
-              <span className="tabular-nums font-mono truncate">{formatCurrency(activeMetrics.tax)}</span>
+              <span className="tabular-nums font-mono truncate">{formatMoney(activeMetrics.tax, { prefix: '' })}</span>
             </div>
             <p className="text-[9px] sm:text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 flex items-center gap-1 sm:gap-2 truncate">
               <span>J: {activeMetrics.j}ว</span>
@@ -542,14 +551,14 @@ export const YearlyDashboard: React.FC<YearlyDashboardProps> = ({
                     <div className="bg-emerald-50/40 dark:bg-emerald-950/20 p-2 rounded-lg border border-emerald-200/50 dark:border-emerald-900/40">
                       <span className="text-[10px] text-emerald-700 dark:text-emerald-300 font-medium block">เงินได้สุทธิ</span>
                       <span className="text-sm font-black text-emerald-600 dark:text-emerald-400 tabular-nums font-mono block">
-                        ฿{formatCurrency(row.totalNetIncome)}
+                        {formatMoney(row.totalNetIncome)}
                       </span>
                     </div>
 
                     <div className="bg-slate-50 dark:bg-slate-800/40 p-2 rounded-lg border border-slate-200/50 dark:border-slate-700/50">
                       <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium block">เงินได้ก่อนหักภาษี</span>
                       <span className="text-sm font-bold text-slate-800 dark:text-slate-200 tabular-nums font-mono block">
-                        ฿{formatCurrency(row.totalIncomeBeforeTax)}
+                        {formatMoney(row.totalIncomeBeforeTax)}
                       </span>
                     </div>
 
@@ -559,14 +568,14 @@ export const YearlyDashboard: React.FC<YearlyDashboardProps> = ({
                         <span className="text-[9px] text-amber-600 dark:text-amber-400 font-bold">{row.totalOtHours}h</span>
                       </div>
                       <span className="text-sm font-bold text-amber-600 dark:text-amber-400 tabular-nums font-mono block">
-                        ฿{formatCurrency(row.totalOtAmount)}
+                        {formatMoney(row.totalOtAmount)}
                       </span>
                     </div>
 
                     <div className="bg-rose-50/40 dark:bg-rose-950/20 p-2 rounded-lg border border-rose-200/50 dark:border-rose-900/40">
                       <span className="text-[10px] text-rose-700 dark:text-rose-300 font-medium block">ภาษีที่จ่าย</span>
                       <span className="text-sm font-bold text-rose-600 dark:text-rose-400 tabular-nums font-mono block">
-                        {row.totalTaxPaid > 0 ? `฿${formatCurrency(row.totalTaxPaid)}` : '฿0.00'}
+                        {formatMoney(row.totalTaxPaid)}
                       </span>
                     </div>
                   </div>
@@ -628,18 +637,18 @@ export const YearlyDashboard: React.FC<YearlyDashboardProps> = ({
                                 <div>
                                   <span className="text-[9px] text-slate-400 block">สุทธิ</span>
                                   <span className="font-extrabold text-emerald-600 dark:text-emerald-400 tabular-nums font-mono">
-                                    ฿{formatCurrency(c.netIncome)}
+                                    {formatMoney(c.netIncome)}
                                   </span>
                                 </div>
                                 <div>
                                   <span className="text-[9px] text-slate-400 block">โอที ({c.otHours}h)</span>
                                   <span className="font-bold text-amber-600 dark:text-amber-400 tabular-nums font-mono">
-                                    ฿{formatCurrency(c.otAmount)}
+                                    {formatMoney(c.otAmount)}
                                   </span>
                                 </div>
                                 <div className="text-right">
                                   <span className="text-[9px] text-slate-400 block">ภาษีที่จ่าย</span>
-                                  {isEditing ? (
+                                  {isEditing && !isMoneyHidden ? (
                                     <div className="flex items-center justify-end gap-1 mt-0.5">
                                       <input
                                         type="number"
@@ -664,13 +673,18 @@ export const YearlyDashboard: React.FC<YearlyDashboardProps> = ({
                                     </div>
                                   ) : (
                                     <button
+                                      disabled={isMoneyHidden}
                                       onClick={() => {
+                                        if (isMoneyHidden) return;
                                         setEditingCycleKey(c.cycleKey);
                                         setEditingTaxInput(c.taxPaid ? String(c.taxPaid) : '');
                                       }}
-                                      className="font-bold text-rose-600 dark:text-rose-400 underline underline-offset-2 tabular-nums font-mono"
+                                      title={isMoneyHidden ? 'ปิดโหมดซ่อนเงินเพื่อดูหรือแก้ไขภาษี' : 'แตะเพื่อแก้ไขภาษี'}
+                                      className={`font-bold text-rose-600 dark:text-rose-400 tabular-nums font-mono ${
+                                        isMoneyHidden ? 'cursor-default opacity-90' : 'underline underline-offset-2'
+                                      }`}
                                     >
-                                      {c.taxPaid > 0 ? `฿${formatCurrency(c.taxPaid)}` : '฿0'}
+                                      {isMoneyHidden ? formatMoney(c.taxPaid) : (c.taxPaid > 0 ? `฿${formatCurrency(c.taxPaid)}` : '฿0')}
                                     </button>
                                   )}
                                 </div>
@@ -678,7 +692,7 @@ export const YearlyDashboard: React.FC<YearlyDashboardProps> = ({
 
                               <div className="flex items-center justify-between text-[10px] text-slate-500 pt-1 border-t border-slate-100 dark:border-slate-800">
                                 <span>วันลา: J ({c.leaveJ}ว) • E ({c.leaveE}ว) • D ({c.leaveD}ว)</span>
-                                <span className="text-slate-400 font-medium">ก่อนภาษี ฿{formatCurrency(c.incomeBeforeTax)}</span>
+                                <span className="text-slate-400 font-medium font-mono tabular-nums">ก่อนภาษี {formatMoney(c.incomeBeforeTax)}</span>
                               </div>
                             </div>
                           );
@@ -739,17 +753,17 @@ export const YearlyDashboard: React.FC<YearlyDashboardProps> = ({
 
                         {/* 2. เงินได้สุทธิ */}
                         <td className="py-3 px-3 sm:px-4 text-right font-extrabold text-emerald-600 dark:text-emerald-400 tabular-nums font-mono">
-                          ฿{formatCurrency(row.totalNetIncome)}
+                          {formatMoney(row.totalNetIncome)}
                         </td>
 
                         {/* 3. เงินได้ก่อนหักภาษี */}
                         <td className="py-3 px-3 sm:px-4 text-right font-bold text-slate-800 dark:text-slate-200 tabular-nums font-mono">
-                          ฿{formatCurrency(row.totalIncomeBeforeTax)}
+                          {formatMoney(row.totalIncomeBeforeTax)}
                         </td>
 
                         {/* 4. ค่าโอที */}
                         <td className="py-3 px-3 sm:px-4 text-right font-bold text-amber-600 dark:text-amber-400 tabular-nums font-mono">
-                          ฿{formatCurrency(row.totalOtAmount)}
+                          {formatMoney(row.totalOtAmount)}
                           <span className="block text-[10px] text-slate-400 font-normal">
                             ({row.totalOtHours} ชม.)
                           </span>
@@ -757,7 +771,7 @@ export const YearlyDashboard: React.FC<YearlyDashboardProps> = ({
 
                         {/* 5. ภาษีที่จ่าย */}
                         <td className="py-3 px-3 sm:px-4 text-right font-bold text-rose-600 dark:text-rose-400 tabular-nums font-mono">
-                          {row.totalTaxPaid > 0 ? `฿${formatCurrency(row.totalTaxPaid)}` : '฿0.00'}
+                          {formatMoney(row.totalTaxPaid)}
                         </td>
 
                         {/* 6. ลา J (พักร้อน) */}
@@ -857,21 +871,21 @@ export const YearlyDashboard: React.FC<YearlyDashboardProps> = ({
                                             {c.cyclePeriodLabel}
                                           </td>
                                           <td className="py-2 px-2 text-right font-mono font-bold text-slate-700 dark:text-slate-300 tabular-nums whitespace-nowrap">
-                                            ฿{formatCurrency(c.baseSalary)}
+                                            {formatMoney(c.baseSalary)}
                                           </td>
                                           <td className="py-2 px-2 text-right font-extrabold text-emerald-600 dark:text-emerald-400 tabular-nums font-mono whitespace-nowrap">
-                                            ฿{formatCurrency(c.netIncome)}
+                                            {formatMoney(c.netIncome)}
                                           </td>
                                           <td className="py-2 px-2 text-right font-bold text-slate-700 dark:text-slate-300 tabular-nums font-mono whitespace-nowrap">
-                                            ฿{formatCurrency(c.incomeBeforeTax)}
+                                            {formatMoney(c.incomeBeforeTax)}
                                           </td>
                                           <td className="py-2 px-2 text-right font-semibold text-amber-600 dark:text-amber-400 tabular-nums font-mono whitespace-nowrap">
-                                            ฿{formatCurrency(c.otAmount)} <span className="text-[10px] text-slate-400">({c.otHours}h)</span>
+                                            {formatMoney(c.otAmount)} <span className="text-[10px] text-slate-400">({c.otHours}h)</span>
                                           </td>
 
                                           {/* 3: ภาษีที่จ่ายไปให้แยกการใส่เป็นรอบเดือน */}
                                           <td className="py-2 px-2 text-right whitespace-nowrap">
-                                            {isEditing ? (
+                                            {isEditing && !isMoneyHidden ? (
                                               <div className="flex items-center justify-end gap-1">
                                                 <input
                                                   type="number"
@@ -896,17 +910,23 @@ export const YearlyDashboard: React.FC<YearlyDashboardProps> = ({
                                               </div>
                                             ) : (
                                               <button
+                                                disabled={isMoneyHidden}
                                                 onClick={() => {
+                                                  if (isMoneyHidden) return;
                                                   setEditingCycleKey(c.cycleKey);
                                                   setEditingTaxInput(c.taxPaid ? String(c.taxPaid) : '');
                                                 }}
-                                                className="group inline-flex items-center gap-1 font-bold text-rose-600 dark:text-rose-400 hover:text-indigo-600 tabular-nums font-mono"
-                                                title="คลิกเพื่อแก้ไขภาษีของรอบเดือนนี้"
+                                                className={`group inline-flex items-center gap-1 font-bold text-rose-600 dark:text-rose-400 tabular-nums font-mono ${
+                                                  isMoneyHidden ? 'cursor-default' : 'hover:text-indigo-600'
+                                                }`}
+                                                title={isMoneyHidden ? 'ปิดโหมดซ่อนเงินเพื่อดูหรือแก้ไขภาษี' : 'คลิกเพื่อแก้ไขภาษีของรอบเดือนนี้'}
                                               >
-                                                <span>{c.taxPaid > 0 ? `฿${formatCurrency(c.taxPaid)}` : '฿0.00'}</span>
-                                                <span className="text-[9px] opacity-0 group-hover:opacity-100 text-indigo-500 underline">
-                                                  (แก้ไข)
-                                                </span>
+                                                <span>{formatMoney(c.taxPaid)}</span>
+                                                {!isMoneyHidden && (
+                                                  <span className="text-[9px] opacity-0 group-hover:opacity-100 text-indigo-500 underline">
+                                                    (แก้ไข)
+                                                  </span>
+                                                )}
                                               </button>
                                             )}
                                           </td>
@@ -955,16 +975,16 @@ export const YearlyDashboard: React.FC<YearlyDashboardProps> = ({
                   รวมทั้งสิ้น (Grand Total)
                 </td>
                 <td className="py-3.5 px-3 sm:px-4 text-right text-emerald-600 dark:text-emerald-400 tabular-nums font-mono">
-                  ฿{formatCurrency(yearlySummaries.reduce((acc, y) => acc + y.totalNetIncome, 0))}
+                  {formatMoney(yearlySummaries.reduce((acc, y) => acc + y.totalNetIncome, 0))}
                 </td>
                 <td className="py-3.5 px-3 sm:px-4 text-right tabular-nums font-mono">
-                  ฿{formatCurrency(yearlySummaries.reduce((acc, y) => acc + y.totalIncomeBeforeTax, 0))}
+                  {formatMoney(yearlySummaries.reduce((acc, y) => acc + y.totalIncomeBeforeTax, 0))}
                 </td>
                 <td className="py-3.5 px-3 sm:px-4 text-right text-amber-600 dark:text-amber-400 tabular-nums font-mono">
-                  ฿{formatCurrency(yearlySummaries.reduce((acc, y) => acc + y.totalOtAmount, 0))}
+                  {formatMoney(yearlySummaries.reduce((acc, y) => acc + y.totalOtAmount, 0))}
                 </td>
                 <td className="py-3.5 px-3 sm:px-4 text-right text-rose-600 dark:text-rose-400 tabular-nums font-mono">
-                  ฿{formatCurrency(yearlySummaries.reduce((acc, y) => acc + y.totalTaxPaid, 0))}
+                  {formatMoney(yearlySummaries.reduce((acc, y) => acc + y.totalTaxPaid, 0))}
                 </td>
                 <td className="py-3.5 px-3 sm:px-4 text-center tabular-nums font-mono text-purple-600 dark:text-purple-400">
                   {yearlySummaries.reduce((acc, y) => acc + y.totalLeaveJ, 0)}
@@ -1002,7 +1022,7 @@ export const YearlyDashboard: React.FC<YearlyDashboardProps> = ({
           </span>
         </div>
         <div className="text-[11px] text-slate-400">
-          * การลา 1 วัน หักเบี้ยขยัน 500 บาท และหักค่าเข้ากะ 900 บาทตามระเบียบบริษัท
+          * เกณฑ์หักสวัสดิการ (ไม่นับวันลาพักร้อน): ค่ากะ หัก 1/3 (1 วัน), 2/3 (2 วัน), 100% (3 วัน+) • เบี้ยขยัน หัก 1/2 (1 วัน), 100% (2 วัน+)
         </div>
       </div>
 

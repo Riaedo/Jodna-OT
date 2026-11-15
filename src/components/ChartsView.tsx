@@ -1,12 +1,12 @@
 import React, { useState, useMemo } from 'react';
 import { DailyRecord, PayrollSettings, PayrollSummary } from '../types/overtime';
-import { formatCurrency } from '../utils/calculator';
 import { 
   BarChart, 
   PieChart, 
   Sparkles, 
   Layers
 } from 'lucide-react';
+import { useMoneyVisibility } from '../context/MoneyVisibilityContext';
 
 interface ChartsViewProps {
   records: DailyRecord[];
@@ -21,6 +21,7 @@ export const ChartsView: React.FC<ChartsViewProps> = ({
   settings,
   onSelectDate,
 }) => {
+  const { isMoneyHidden, formatMoney } = useMoneyVisibility();
   const [hoveredRecord, setHoveredRecord] = useState<DailyRecord | null>(null);
 
   // Maximum OT in a single day for chart scaling
@@ -89,7 +90,7 @@ export const ChartsView: React.FC<ChartsViewProps> = ({
             </h3>
             <p className="text-xs text-slate-300 mt-1 max-w-2xl leading-relaxed">
               คุณสะสมชั่วโมง OT ทั้งหมด <span className="font-bold text-emerald-400">{summary.totalOtHours} ชั่วโมง</span> คิดเป็น 
-              <span className="font-bold text-amber-300"> +฿{formatCurrency(summary.totalOtAmount)}</span> หรือประมาณ 
+              <span className="font-bold text-amber-300 font-mono"> {formatMoney(summary.totalOtAmount, { prefix: '+฿' })}</span> หรือประมาณ 
               <span className="font-bold text-indigo-300"> {otPct.toFixed(1)}%</span> ของรายได้รวมทั้งหมดในงวดนี้
             </p>
           </div>
@@ -103,11 +104,12 @@ export const ChartsView: React.FC<ChartsViewProps> = ({
             <span className="text-sm font-bold text-amber-400 block mt-0.5">
               วันที่ {topOtRecord.dayNumber} ({topOtRecord.dayOfWeek})
             </span>
-            <span className="text-xs text-slate-300">
-              รวม {topOtHours} ชม. (+฿{formatCurrency(
+            <span className="text-xs text-slate-300 font-mono">
+              รวม {topOtHours} ชม. ({formatMoney(
                 (topOtRecord.ot1_0 * summary.ot1_0_rate) +
                 (topOtRecord.ot1_5 * summary.ot1_5_rate) +
-                (topOtRecord.ot3_0 * summary.ot3_0_rate)
+                (topOtRecord.ot3_0 * summary.ot3_0_rate),
+                { prefix: '+฿' }
               )})
             </span>
           </div>
@@ -236,8 +238,8 @@ export const ChartsView: React.FC<ChartsViewProps> = ({
                               <span className="text-emerald-400 font-semibold mt-0.5">
                                 รวม OT: {dayTotal} ชม.
                               </span>
-                              <span className="text-indigo-300 font-bold">
-                                +฿{formatCurrency(dayEarnings)}
+                              <span className="text-indigo-300 font-bold font-mono">
+                                {formatMoney(dayEarnings, { prefix: '+฿' })}
                               </span>
                               {r.note && <span className="text-slate-400 text-[9px] mt-0.5 max-w-[130px] truncate">{r.note}</span>}
                             </>
@@ -387,8 +389,8 @@ export const ChartsView: React.FC<ChartsViewProps> = ({
           </div>
 
           <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 text-center">
-            <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-              อัตราเฉลี่ย: ฿{(summary.totalOtAmount / (summary.totalOtHours || 1)).toFixed(2)} / ชม.
+            <span className="text-xs text-slate-500 dark:text-slate-400 font-medium font-mono">
+              อัตราเฉลี่ย: {isMoneyHidden ? '฿••••••' : `฿${(summary.totalOtAmount / (summary.totalOtHours || 1)).toFixed(2)}`} / ชม.
             </span>
           </div>
         </div>
@@ -431,7 +433,7 @@ export const ChartsView: React.FC<ChartsViewProps> = ({
                 <span className="text-[10px] text-slate-400">{salaryPct.toFixed(1)}% ของรายได้</span>
               </div>
             </div>
-            <span className="text-xs sm:text-sm font-bold text-indigo-700 dark:text-indigo-300">฿{formatCurrency(settings.baseSalary)}</span>
+            <span className="text-xs sm:text-sm font-bold text-indigo-700 dark:text-indigo-300 font-mono">{formatMoney(settings.baseSalary)}</span>
           </div>
 
           <div className="bg-emerald-50/60 dark:bg-emerald-950/40 border border-emerald-100 dark:border-emerald-900/40 p-3 rounded-xl flex items-center justify-between">
@@ -442,7 +444,7 @@ export const ChartsView: React.FC<ChartsViewProps> = ({
                 <span className="text-[10px] text-slate-400">{otPct.toFixed(1)}% ของรายได้</span>
               </div>
             </div>
-            <span className="text-xs sm:text-sm font-bold text-emerald-700 dark:text-emerald-300">฿{formatCurrency(summary.totalOtAmount)}</span>
+            <span className="text-xs sm:text-sm font-bold text-emerald-700 dark:text-emerald-300 font-mono">{formatMoney(summary.totalOtAmount)}</span>
           </div>
 
           <div className="bg-purple-50/60 dark:bg-purple-950/40 border border-purple-100 dark:border-purple-900/40 p-3 rounded-xl flex items-center justify-between">
@@ -453,8 +455,8 @@ export const ChartsView: React.FC<ChartsViewProps> = ({
                 <span className="text-[10px] text-slate-400">{allowPct.toFixed(1)}% ของรายได้</span>
               </div>
             </div>
-            <span className="text-xs sm:text-sm font-bold text-purple-700 dark:text-purple-300">
-              ฿{formatCurrency(summary.totalFixedAllowances + summary.diligenceAmount + summary.shiftAmount)}
+            <span className="text-xs sm:text-sm font-bold text-purple-700 dark:text-purple-300 font-mono">
+              {formatMoney(summary.totalFixedAllowances + summary.diligenceAmount + summary.shiftAmount)}
             </span>
           </div>
         </div>

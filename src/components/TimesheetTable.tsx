@@ -1,14 +1,12 @@
-import React, { useState, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { DailyRecord, PayrollSettings, PayrollSummary } from '../types/overtime';
-import { formatCurrency } from '../utils/calculator';
 import { 
   FileSpreadsheet, 
   Lock, 
   Calendar, 
-  Columns, 
-  List, 
-  Table as TableIcon 
+  Columns
 } from 'lucide-react';
+import { useMoneyVisibility } from '../context/MoneyVisibilityContext';
 
 interface TimesheetTableProps {
   records: DailyRecord[];
@@ -25,9 +23,7 @@ export const TimesheetTable: React.FC<TimesheetTableProps> = ({
   onGoToCalendar,
   latestDate,
 }) => {
-  // 4: Default to 'single-page' (ดูได้ในหน้าเดียวไม่ให้มีแถบเลื่อน)
-  const [viewMode, setViewMode] = useState<'single-page' | 'list' | 'matrix'>('single-page');
-
+  const { formatMoney } = useMoneyVisibility();
   const hasWorkStartDate = Boolean(settings.workStartDate && settings.workStartDate.trim() !== '');
 
   // 3. วันที่ต่างๆ ให้เริ่มแสดงจากวันที่เริ่มทำงาน และแสดงจนถึงวันที่ล่าสุดเท่านั้น
@@ -149,8 +145,8 @@ export const TimesheetTable: React.FC<TimesheetTableProps> = ({
           {totalDayHours > 0 ? `${totalDayHours}` : '-'}
         </td>
 
-        <td className="py-1 px-1.5 text-right font-bold text-slate-900 dark:text-white whitespace-nowrap">
-          {dayEarnings > 0 ? `฿${formatCurrency(dayEarnings)}` : '-'}
+        <td className="py-1 px-1.5 text-right font-bold text-slate-900 dark:text-white whitespace-nowrap tabular-nums font-mono">
+          {dayEarnings > 0 ? formatMoney(dayEarnings) : '-'}
         </td>
       </tr>
     );
@@ -177,50 +173,30 @@ export const TimesheetTable: React.FC<TimesheetTableProps> = ({
           </p>
         </div>
 
-        {/* View Switchers */}
-        <div className="flex items-center gap-2 self-start sm:self-auto">
+        {/* Action Controls */}
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
           {onGoToCalendar && (
             <button
               onClick={onGoToCalendar}
-              className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900 text-indigo-600 dark:text-indigo-300 text-xs font-bold transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900 text-indigo-600 dark:text-indigo-300 text-xs font-bold border border-indigo-200/70 dark:border-indigo-800/70 transition-colors"
             >
               <Calendar className="w-3.5 h-3.5" />
               <span>ปฏิทินกะ</span>
             </button>
           )}
 
-          <div className="bg-slate-200/80 dark:bg-slate-800 p-0.5 rounded-xl flex items-center text-xs font-semibold">
-            <button
-              onClick={() => setViewMode('single-page')}
-              title="ดูครบ 30 วันในหน้าเดียวแบบแบ่ง 2 ฝั่ง พอดีจอ ไม่ต้องเลื่อน"
-              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg transition-colors ${
-                viewMode === 'single-page' 
-                  ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-sm font-bold' 
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-              }`}
-            >
-              <Columns className="w-3.5 h-3.5" />
-              <span>หน้าเดียว (พอดีจอ)</span>
-            </button>
-            <button
-              onClick={() => setViewMode('list')}
-              title="ดูรายการเรียงลงมาทีละวัน"
-              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg transition-colors ${
-                viewMode === 'list' 
-                  ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-sm font-bold' 
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-              }`}
-            >
-              <List className="w-3.5 h-3.5" />
-              <span>รายการยาว</span>
-            </button>
+          <div
+            title="ดูครบทั้งรอบวิกในหน้าเดียวแบบแบ่ง 2 ฝั่ง พอดีจอ ไม่ต้องเลื่อน"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-300 border border-slate-200 dark:border-slate-700 shadow-xs text-xs font-bold"
+          >
+            <Columns className="w-3.5 h-3.5" />
+            <span>หน้าเดียว (พอดีจอ)</span>
           </div>
         </div>
       </div>
 
       {/* 4: SINGLE PAGE VIEW (ดูได้ในหน้าเดียว ไม่ให้มีแถบเลื่อน) */}
-      {viewMode === 'single-page' && (
-        <div className="p-2 sm:p-3">
+      <div className="p-2 sm:p-3">
           
           {/* Desktop/Tablet: Split 2 columns side-by-side (15 days left + 15 days right) */}
           <div className="hidden md:grid md:grid-cols-2 gap-3">
@@ -333,8 +309,8 @@ export const TimesheetTable: React.FC<TimesheetTableProps> = ({
                         {totalDayHours > 0 ? `${totalDayHours}h` : '-'}
                       </td>
 
-                      <td className="py-1.5 px-1.5 text-right font-bold text-slate-900 dark:text-white truncate">
-                        {dayEarnings > 0 ? `฿${formatCurrency(dayEarnings)}` : '-'}
+                      <td className="py-1.5 px-1.5 text-right font-bold text-slate-900 dark:text-white truncate tabular-nums font-mono">
+                        {dayEarnings > 0 ? formatMoney(dayEarnings) : '-'}
                       </td>
                     </tr>
                   );
@@ -350,103 +326,11 @@ export const TimesheetTable: React.FC<TimesheetTableProps> = ({
               <span>OT รวม: <strong className="text-emerald-400 text-sm">{summary.totalOtHours} ชม.</strong></span>
             </div>
             <div className="flex items-center gap-3">
-              <span>ยอดเงิน OT รวม: <strong className="text-emerald-300 text-sm">฿{formatCurrency(summary.totalOtAmount)}</strong></span>
+              <span>ยอดเงิน OT รวม: <strong className="text-emerald-300 text-sm tabular-nums font-mono">{formatMoney(summary.totalOtAmount)}</strong></span>
             </div>
           </div>
 
         </div>
-      )}
-
-      {/* DETAILED LIST VIEW (Full Table) */}
-      {viewMode === 'list' && (
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs text-left">
-            <thead className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 uppercase font-bold border-b border-slate-200 dark:border-slate-700">
-              <tr>
-                <th className="p-2.5">วันที่</th>
-                <th className="p-2.5">วัน</th>
-                {settings.shiftWorkEnabled && <th className="p-2.5 text-center">กะ</th>}
-                <th className="p-2.5">ประเภทกะ / การลา</th>
-                <th className="p-2.5 text-center">OT 1.0x (ชม.)</th>
-                <th className="p-2.5 text-center">OT 1.5x (ชม.)</th>
-                <th className="p-2.5 text-center">OT 3.0x (ชม.)</th>
-                <th className="p-2.5 text-center">รวม ชม.</th>
-                <th className="p-2.5 text-right">ค่า OT (บาท)</th>
-                <th className="p-2.5">หมายเหตุ</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-              {displayRecords.map((r: DailyRecord) => {
-                const badge = getShiftBadge(r);
-                const dayTotalHours = (Number(r.ot1_0) || 0) + (Number(r.ot1_5) || 0) + (Number(r.ot3_0) || 0);
-                const dayEarnings = 
-                  ((Number(r.ot1_0) || 0) * summary.ot1_0_rate) +
-                  ((Number(r.ot1_5) || 0) * summary.ot1_5_rate) +
-                  ((Number(r.ot3_0) || 0) * summary.ot3_0_rate);
-
-                return (
-                  <tr 
-                    key={r.id}
-                    className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors"
-                  >
-                    <td className="p-2.5 font-bold text-slate-800 dark:text-slate-200">
-                      {r.date}
-                    </td>
-                    <td className="p-2.5 font-medium text-slate-600 dark:text-slate-400">
-                      {(() => {
-                        const dayIdx = new Date(r.date + 'T00:00:00').getDay();
-                        const thaiDays = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'];
-                        const dowThai = thaiDays[dayIdx];
-                        return (
-                          <span className={`px-2 py-0.5 rounded text-[11px] font-bold ${
-                            dayIdx === 0 ? 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300' : dayIdx === 6 ? 'bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
-                          }`}>
-                            {dowThai}
-                          </span>
-                        );
-                      })()}
-                    </td>
-                    {settings.shiftWorkEnabled && (
-                      <td className="p-2.5 text-center">
-                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                          r.shiftPeriod === 'NIGHT'
-                            ? 'bg-purple-900 text-purple-200 border border-purple-700'
-                            : 'bg-amber-100 text-amber-800 border border-amber-300'
-                        }`}>
-                          {r.shiftPeriod === 'NIGHT' ? '🌙 Night' : '🌞 Day'}
-                        </span>
-                      </td>
-                    )}
-                    <td className="p-2.5">
-                      <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold border ${badge.bg}`}>
-                        {badge.desc}
-                      </span>
-                    </td>
-                    <td className="p-2.5 text-center font-bold text-blue-700 dark:text-blue-400">
-                      {r.ot1_0 > 0 ? r.ot1_0 : '-'}
-                    </td>
-                    <td className="p-2.5 text-center font-bold text-emerald-700 dark:text-emerald-400">
-                      {r.ot1_5 > 0 ? r.ot1_5 : '-'}
-                    </td>
-                    <td className="p-2.5 text-center font-bold text-purple-700 dark:text-purple-400">
-                      {r.ot3_0 > 0 ? r.ot3_0 : '-'}
-                    </td>
-                    <td className="p-2.5 text-center font-black text-slate-800 dark:text-slate-100">
-                      {dayTotalHours > 0 ? `${dayTotalHours} ชม.` : '-'}
-                    </td>
-                    <td className="p-2.5 text-right font-bold text-slate-900 dark:text-white">
-                      {dayEarnings > 0 ? `฿${formatCurrency(dayEarnings)}` : '-'}
-                    </td>
-                    <td className="p-2.5 text-slate-500 dark:text-slate-400 max-w-xs truncate">
-                      {r.note || '-'}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
 
     </div>
   );

@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { SalaryIncrementRecord, PayrollSettings } from '../types/overtime';
 import { DEFAULT_SALARY_INCREMENTS } from '../data/initialSalaryIncrements';
-import { formatCurrency, formatYearMonthThai } from '../utils/calculator';
+import { formatYearMonthThai } from '../utils/calculator';
 import { 
   TrendingUp, 
   Plus, 
@@ -21,6 +21,7 @@ import {
   CheckCircle2,
   Clock
 } from 'lucide-react';
+import { useMoneyVisibility, MONEY_MASK } from '../context/MoneyVisibilityContext';
 
 interface SalaryIncrementSectionProps {
   salaryIncrements?: SalaryIncrementRecord[];
@@ -35,37 +36,17 @@ export const SalaryIncrementSection: React.FC<SalaryIncrementSectionProps> = ({
   settings,
   onUpdateBaseSalary,
 }) => {
-  // Local state fallback if prop not provided (v2: ว่างเริ่มต้น พร้อมใช้งานจริง)
-  const [localRecords, setLocalRecords] = useState<SalaryIncrementRecord[]>(() => {
-    try {
-      const saved = localStorage.getItem('ot_app_salary_increments_v2');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          return parsed.map((item, idx) => ({
-            ...item,
-            effectiveMonth: item.effectiveMonth || `${item.effectiveYear || (2022 + (item.tenureYear ?? idx))}-10`,
-          }));
-        }
-      }
-    } catch (e) {
-      console.error(e);
-    }
-    return DEFAULT_SALARY_INCREMENTS;
-  });
+  const { isMoneyHidden, formatMoney } = useMoneyVisibility();
+  // Local state fallback only if prop not provided (no unscoped localStorage read/write)
+  const [localRecords, setLocalRecords] = useState<SalaryIncrementRecord[]>(DEFAULT_SALARY_INCREMENTS);
 
-  const records = propIncrements || localRecords;
+  const records = propIncrements !== undefined ? propIncrements : localRecords;
 
   const updateRecords = (newRecords: SalaryIncrementRecord[]) => {
     if (onUpdateSalaryIncrements) {
       onUpdateSalaryIncrements(newRecords);
     } else {
       setLocalRecords(newRecords);
-    }
-    try {
-      localStorage.setItem('ot_app_salary_increments_v2', JSON.stringify(newRecords));
-    } catch (e) {
-      console.error(e);
     }
   };
 
@@ -422,7 +403,7 @@ export const SalaryIncrementSection: React.FC<SalaryIncrementSectionProps> = ({
             </span>
           </div>
           <div className="mt-2 text-xl sm:text-2xl font-black text-slate-900 dark:text-white tabular-nums font-mono">
-            ฿{formatCurrency(currentSalary)}
+            {formatMoney(currentSalary)}
           </div>
           <div className="mt-1 flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">
             <ArrowUpRight className="w-3.5 h-3.5" />
@@ -439,7 +420,7 @@ export const SalaryIncrementSection: React.FC<SalaryIncrementSectionProps> = ({
             </span>
           </div>
           <div className="mt-2 text-xl sm:text-2xl font-black text-slate-900 dark:text-white tabular-nums font-mono">
-            ฿{formatCurrency(startingSalary)}
+            {formatMoney(startingSalary)}
           </div>
           <div className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
             เริ่มต้นเมื่อ {formatYearMonthThai(startingRecord?.effectiveMonth || '2022-10')}
@@ -471,10 +452,10 @@ export const SalaryIncrementSection: React.FC<SalaryIncrementSectionProps> = ({
             </span>
           </div>
           <div className="mt-2 text-xl sm:text-2xl font-black text-amber-600 dark:text-amber-400 tabular-nums font-mono">
-            ฿{formatCurrency(latestPfDeduction)}
+            {formatMoney(latestPfDeduction)}
           </div>
-          <div className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
-            คิดเป็น ฿{formatCurrency(latestPfDeduction * 12)} / ปี
+          <div className="mt-1 text-[11px] text-slate-500 dark:text-slate-400 font-mono tabular-nums">
+            คิดเป็น {formatMoney(latestPfDeduction * 12)} / ปี
           </div>
         </div>
 
@@ -487,8 +468,8 @@ export const SalaryIncrementSection: React.FC<SalaryIncrementSectionProps> = ({
             <Layers className="w-4 h-4 text-indigo-500" />
             เส้นทางการเติบโตของเงินเดือนตามช่วงเวลา (Timeline Growth Ladder)
           </span>
-          <span className="text-[11px] text-slate-400">
-            ฐานปัจจุบัน: ฿{formatCurrency(settings.baseSalary)}
+          <span className="text-[11px] text-slate-400 font-mono tabular-nums">
+            ฐานปัจจุบัน: {formatMoney(settings.baseSalary)}
           </span>
         </div>
 
@@ -535,13 +516,13 @@ export const SalaryIncrementSection: React.FC<SalaryIncrementSectionProps> = ({
                   </div>
 
                   <div className="mt-1 text-sm sm:text-base font-extrabold text-slate-800 dark:text-white tabular-nums font-mono">
-                    ฿{formatCurrency(rec.salaryAfter)}
+                    {formatMoney(rec.salaryAfter)}
                   </div>
 
                   <div className="mt-1 flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400 pt-1 border-t border-slate-100 dark:border-slate-700/50">
                     <span>เพิ่ม:</span>
-                    <span className="font-semibold text-emerald-600 dark:text-emerald-400">
-                      {rec.increaseAmount > 0 ? `+฿${formatCurrency(rec.increaseAmount)}` : '-'}
+                    <span className="font-semibold text-emerald-600 dark:text-emerald-400 font-mono tabular-nums">
+                      {rec.increaseAmount > 0 ? formatMoney(rec.increaseAmount, { prefix: '+฿' }) : '-'}
                     </span>
                   </div>
                 </div>
@@ -635,7 +616,7 @@ export const SalaryIncrementSection: React.FC<SalaryIncrementSectionProps> = ({
 
                     {/* 3. เงินเดือนก่อนปรับ */}
                     <td className="py-3 px-3 sm:px-4 text-right tabular-nums font-mono text-slate-700 dark:text-slate-300 font-semibold">
-                      ฿{formatCurrency(rec.salaryBefore)}
+                      {formatMoney(rec.salaryBefore)}
                     </td>
 
                     {/* 4. เปอร์เซนต์ปรับ */}
@@ -653,14 +634,14 @@ export const SalaryIncrementSection: React.FC<SalaryIncrementSectionProps> = ({
 
                     {/* 5. เงินเดือนหลังปรับ */}
                     <td className="py-3 px-3 sm:px-4 text-right tabular-nums font-mono font-extrabold text-emerald-600 dark:text-emerald-400 text-sm">
-                      ฿{formatCurrency(rec.salaryAfter)}
+                      {formatMoney(rec.salaryAfter)}
                     </td>
 
                     {/* 6. เงินเดือนที่เพิ่ม */}
                     <td className="py-3 px-3 sm:px-4 text-right tabular-nums font-mono">
                       {rec.increaseAmount > 0 ? (
                         <span className="font-bold text-slate-800 dark:text-slate-200">
-                          +฿{formatCurrency(rec.increaseAmount)}
+                          {formatMoney(rec.increaseAmount, { prefix: '+฿' })}
                         </span>
                       ) : (
                         <span className="text-slate-400">0</span>
@@ -669,7 +650,7 @@ export const SalaryIncrementSection: React.FC<SalaryIncrementSectionProps> = ({
 
                     {/* 7. กองทุนที่หัก */}
                     <td className="py-3 px-3 sm:px-4 text-right tabular-nums font-mono font-semibold text-amber-600 dark:text-amber-400">
-                      ฿{formatCurrency(rec.providentFundDeduction)}
+                      {formatMoney(rec.providentFundDeduction)}
                     </td>
 
                     {/* 8. จัดการ */}
@@ -679,7 +660,7 @@ export const SalaryIncrementSection: React.FC<SalaryIncrementSectionProps> = ({
                           <button
                             onClick={() => {
                               onUpdateBaseSalary(rec.salaryAfter);
-                              showToast(`ใช้เงินเดือนปีที่ ${rec.tenureYear} (฿${formatCurrency(rec.salaryAfter)}) เป็นฐานเงินเดือนแล้ว`);
+                              showToast(`ใช้เงินเดือนปีที่ ${rec.tenureYear} (${formatMoney(rec.salaryAfter)}) เป็นฐานเงินเดือนแล้ว`);
                             }}
                             className="px-2 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-600 hover:text-white dark:bg-indigo-950/60 dark:hover:bg-indigo-600 text-indigo-600 dark:text-indigo-400 text-[10px] font-bold transition-all"
                             title="นำยอดนี้ไปใช้เป็นฐานเงินเดือนหลักของระบบ"
@@ -729,13 +710,13 @@ export const SalaryIncrementSection: React.FC<SalaryIncrementSectionProps> = ({
                   +{totalIncreasePercent.toFixed(2)}%
                 </td>
                 <td className="py-3 px-3 sm:px-4 text-right tabular-nums font-mono text-emerald-600 dark:text-emerald-400">
-                  ฿{formatCurrency(currentSalary)}
+                  {formatMoney(currentSalary)}
                 </td>
                 <td className="py-3 px-3 sm:px-4 text-right tabular-nums font-mono text-emerald-600 dark:text-emerald-400">
-                  +฿{formatCurrency(totalIncreaseAmount)}
+                  {formatMoney(totalIncreaseAmount, { prefix: '+฿' })}
                 </td>
                 <td className="py-3 px-3 sm:px-4 text-right tabular-nums font-mono text-amber-600 dark:text-amber-400">
-                  ฿{formatCurrency(latestPfDeduction)}
+                  {formatMoney(latestPfDeduction)}
                 </td>
                 <td className="py-3 px-3 sm:px-4 text-center text-[10px] text-slate-400">
                   (อัตรา 2%)
@@ -754,8 +735,8 @@ export const SalaryIncrementSection: React.FC<SalaryIncrementSectionProps> = ({
             หมายเหตุ: กองทุนที่หักคำนวณจากอัตรากองทุนสำรองเลี้ยงชีพของบริษัท <strong>{(settings.providentFundRate * 100).toFixed(0)}%</strong> ของเงินเดือนหลังปรับ
           </span>
         </div>
-        <div className="text-slate-400">
-          อ้างอิงข้อมูล: ฐานเงินเดือนปัจจุบัน <strong>฿{formatCurrency(settings.baseSalary)}</strong>
+        <div className="text-slate-400 font-mono tabular-nums">
+          อ้างอิงข้อมูล: ฐานเงินเดือนปัจจุบัน <strong>{formatMoney(settings.baseSalary)}</strong>
         </div>
       </div>
 
@@ -836,16 +817,26 @@ export const SalaryIncrementSection: React.FC<SalaryIncrementSectionProps> = ({
                 <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
                   เงินเดือนก่อนปรับ (บาท)
                 </label>
-                <input
-                  type="number"
-                  min="0"
-                  step="1"
-                  required
-                  value={formSalaryBefore > 0 ? formSalaryBefore : ''}
-                  placeholder="0.00"
-                  onChange={(e) => setFormSalaryBefore(Number(e.target.value) || 0)}
-                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2 text-sm font-bold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono"
-                />
+                {isMoneyHidden ? (
+                  <input
+                    type="text"
+                    readOnly
+                    value={`฿${MONEY_MASK}`}
+                    title="ปิดโหมดซ่อนเงินเพื่อดูหรือแก้ไขจำนวนเงิน"
+                    className="w-full bg-slate-100 dark:bg-slate-800/70 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2 text-sm font-bold text-slate-500 dark:text-slate-400 font-mono cursor-not-allowed"
+                  />
+                ) : (
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    required
+                    value={formSalaryBefore > 0 ? formSalaryBefore : ''}
+                    placeholder="0.00"
+                    onChange={(e) => setFormSalaryBefore(Number(e.target.value) || 0)}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2 text-sm font-bold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono"
+                  />
+                )}
               </div>
 
               {/* Mode Toggle: Percent or Direct Amount */}
@@ -898,15 +889,25 @@ export const SalaryIncrementSection: React.FC<SalaryIncrementSectionProps> = ({
                   </div>
                 ) : (
                   <div className="relative">
-                    <input
-                      type="number"
-                      step="1"
-                      min="0"
-                      value={formIncreaseAmountDirect > 0 ? formIncreaseAmountDirect : ''}
-                      onChange={(e) => setFormIncreaseAmountDirect(Number(e.target.value) || 0)}
-                      placeholder="0.00"
-                      className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2 text-sm font-bold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono"
-                    />
+                    {isMoneyHidden ? (
+                      <input
+                        type="text"
+                        readOnly
+                        value={`฿${MONEY_MASK}`}
+                        title="ปิดโหมดซ่อนเงินเพื่อดูหรือแก้ไขจำนวนเงิน"
+                        className="w-full bg-slate-100 dark:bg-slate-800/70 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2 text-sm font-bold text-slate-500 dark:text-slate-400 font-mono cursor-not-allowed"
+                      />
+                    ) : (
+                      <input
+                        type="number"
+                        step="1"
+                        min="0"
+                        value={formIncreaseAmountDirect > 0 ? formIncreaseAmountDirect : ''}
+                        onChange={(e) => setFormIncreaseAmountDirect(Number(e.target.value) || 0)}
+                        placeholder="0.00"
+                        className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2 text-sm font-bold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono"
+                      />
+                    )}
                     <span className="absolute right-3.5 top-2.5 text-xs font-bold text-slate-400">
                       บาท
                     </span>
@@ -924,20 +925,20 @@ export const SalaryIncrementSection: React.FC<SalaryIncrementSectionProps> = ({
                 <div className="grid grid-cols-3 gap-2 text-center pt-1">
                   <div className="p-2 bg-white dark:bg-slate-900 rounded-xl border border-emerald-200 dark:border-emerald-900/60">
                     <div className="text-[10px] text-slate-500 dark:text-slate-400">เงินเดือนใหม่</div>
-                    <div className="font-bold text-emerald-600 dark:text-emerald-400 font-mono mt-0.5">
-                      ฿{formatCurrency(modalPreview.after)}
+                    <div className="font-bold text-emerald-600 dark:text-emerald-400 font-mono mt-0.5 tabular-nums">
+                      {formatMoney(modalPreview.after)}
                     </div>
                   </div>
                   <div className="p-2 bg-white dark:bg-slate-900 rounded-xl border border-emerald-200 dark:border-emerald-900/60">
                     <div className="text-[10px] text-slate-500 dark:text-slate-400">เพิ่มขึ้น</div>
-                    <div className="font-bold text-slate-800 dark:text-white font-mono mt-0.5">
-                      +฿{formatCurrency(modalPreview.incAmt)}
+                    <div className="font-bold text-slate-800 dark:text-white font-mono mt-0.5 tabular-nums">
+                      {formatMoney(modalPreview.incAmt, { prefix: '+฿' })}
                     </div>
                   </div>
                   <div className="p-2 bg-white dark:bg-slate-900 rounded-xl border border-emerald-200 dark:border-emerald-900/60">
                     <div className="text-[10px] text-slate-500 dark:text-slate-400">หักกองทุน 2%</div>
-                    <div className="font-bold text-amber-600 dark:text-amber-400 font-mono mt-0.5">
-                      ฿{formatCurrency(modalPreview.pf)}
+                    <div className="font-bold text-amber-600 dark:text-amber-400 font-mono mt-0.5 tabular-nums">
+                      {formatMoney(modalPreview.pf)}
                     </div>
                   </div>
                 </div>
@@ -1027,7 +1028,7 @@ export const SalaryIncrementSection: React.FC<SalaryIncrementSectionProps> = ({
             <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl text-xs space-y-1 border border-slate-100 dark:border-slate-700/60">
               <div className="font-bold text-slate-900 dark:text-white flex items-center justify-between">
                 <span>ปีที่ {deletingRecord.tenureYear}</span>
-                <span className="text-emerald-600 dark:text-emerald-400 font-mono">฿{formatCurrency(deletingRecord.salaryAfter)}</span>
+                <span className="text-emerald-600 dark:text-emerald-400 font-mono tabular-nums">{formatMoney(deletingRecord.salaryAfter)}</span>
               </div>
               <div className="text-slate-500 dark:text-slate-400 flex items-center justify-between">
                 <span>ช่วงมีผล:</span>
