@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { DailyRecord, PayrollSettings, PayrollSummary, SalaryIncrementRecord } from '../types/overtime';
+import { DailyRecord, Holiday, PayrollSettings, PayrollSummary, SalaryIncrementRecord } from '../types/overtime';
 import { 
   calculatePayroll, 
   createCycleRecords, 
@@ -16,15 +16,22 @@ import {
   Clock, 
   Receipt, 
   Calendar, 
+  CalendarDays,
+  CalendarCheck,
   ChevronDown, 
   ChevronUp, 
   ExternalLink, 
   FileSpreadsheet, 
   CheckCircle2,
-  AlertCircle
+  ArrowLeft,
+  ArrowRight
 } from 'lucide-react';
 import { SalaryIncrementSection } from './SalaryIncrementSection';
+import { YearlyLeaveView } from './YearlyLeaveView';
+import { HolidayCalendar } from './HolidayCalendar';
 import { useMoneyVisibility } from '../context/MoneyVisibilityContext';
+
+export type OverallModule = 'hub' | 'annual_records' | 'salary_increment' | 'yearly_leave' | 'holidays';
 
 interface YearlyDashboardProps {
   allCycleRecords: Record<string, DailyRecord[]>;
@@ -35,6 +42,16 @@ interface YearlyDashboardProps {
   onUpdateCycleTax?: (cycleKey: string, tax: number) => void;
   onNavigateToCycle?: (year: number, month: number) => void;
   onUpdateBaseSalary?: (newSalary: number) => void;
+  resetToHubSignal?: number;
+  requestedModule?: { module: OverallModule; nonce: number } | null;
+  minYear?: number;
+  maxYear?: number;
+  holidays: Holiday[];
+  onAddHoliday: (holiday: Omit<Holiday, 'id'>) => void;
+  onUpdateHoliday: (holiday: Holiday) => void;
+  onDeleteHoliday: (id: string) => void;
+  onApplyHolidaysToCurrentCycle: () => void;
+  onCopyHolidaysFromYear?: (sourceYear: number, targetYear: number) => Promise<void> | void;
 }
 
 interface MonthlyCycleSummary {
@@ -79,9 +96,35 @@ export const YearlyDashboard: React.FC<YearlyDashboardProps> = ({
   onUpdateCycleTax,
   onNavigateToCycle,
   onUpdateBaseSalary,
+  resetToHubSignal,
+  requestedModule,
+  minYear,
+  maxYear,
+  holidays,
+  onAddHoliday,
+  onUpdateHoliday,
+  onDeleteHoliday,
+  onApplyHolidaysToCurrentCycle,
+  onCopyHolidaysFromYear,
 }) => {
   const { isMoneyHidden, formatMoney } = useMoneyVisibility();
   const hasWorkStartDate = Boolean(settings.workStartDate && settings.workStartDate.trim() !== '');
+
+  const [activeModule, setActiveModule] = useState<OverallModule>(() =>
+    requestedModule?.module ? requestedModule.module : 'hub'
+  );
+
+  useEffect(() => {
+    if (resetToHubSignal && resetToHubSignal > 0) {
+      setActiveModule('hub');
+    }
+  }, [resetToHubSignal]);
+
+  useEffect(() => {
+    if (requestedModule && requestedModule.nonce > 0) {
+      setActiveModule(requestedModule.module);
+    }
+  }, [requestedModule]);
 
   // 3. วันที่ รอบเดือน รอบปี ต่างๆ ให้เริ่มแสดงจากวันที่เริ่มทำงาน และแสดงจนถึงวันที่ รอบเดือน รอบปี ล่าสุดเท่านั้น
   const { startCycle, latestCycle } = useMemo(() => {
@@ -312,9 +355,185 @@ export const YearlyDashboard: React.FC<YearlyDashboardProps> = ({
 
   return (
     <div className="space-y-5 sm:space-y-6">
-      
-      {/* 1. Header Banner */}
-      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-2xl sm:rounded-3xl p-4 sm:p-6 border border-indigo-500/20 shadow-xl text-white flex flex-col md:flex-row md:items-center justify-between gap-4">
+      {activeModule === 'hub' ? (
+        /* Dual Cards Hub (แถวละ 2 การ์ดบน PC/Tablet, 1 การ์ดบนมือถือ รวม 4 การ์ด) */
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
+          {/* Card 1: Annual Financial & Attendance Records */}
+          <button
+            type="button"
+            onClick={() => setActiveModule('annual_records')}
+            className="w-full bg-slate-900/90 border border-indigo-500/60 hover:border-indigo-400 shadow-lg shadow-indigo-500/10 rounded-2xl p-5 sm:p-6 text-left transition-all duration-200 hover:-translate-y-0.5 flex items-start gap-4 group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+          >
+            <div className="shrink-0 p-3 sm:p-3.5 rounded-xl bg-indigo-500/20 border border-indigo-500/40 text-indigo-400 group-hover:bg-indigo-500/30 transition-colors">
+              <LayoutDashboard className="w-6 h-6" />
+            </div>
+
+            <div className="flex-1 min-w-0">
+              <div className="flex items-start justify-between gap-2">
+                <h3 className="text-sm sm:text-base font-bold text-white leading-snug">
+                  1. บันทึกการทำงานและรายได้ประจำปี{' '}
+                  <span className="text-indigo-400 font-semibold block sm:inline">
+                    (ANNUAL FINANCIAL &amp; ATTENDANCE RECORDS)
+                  </span>
+                </h3>
+                <ArrowRight className="w-4 h-4 text-indigo-400/70 group-hover:text-indigo-300 group-hover:translate-x-0.5 transition-all shrink-0 mt-1" />
+              </div>
+              <p className="text-xs sm:text-sm text-slate-300 mt-1.5 leading-relaxed">
+                สรุปเงินได้สุทธิ ค่าโอที ภาษี และสถิติวันลา 12 รอบวิก
+              </p>
+            </div>
+          </button>
+
+          {/* Card 2: Salary Increment */}
+          <button
+            type="button"
+            onClick={() => setActiveModule('salary_increment')}
+            className="w-full bg-slate-900/90 border border-slate-800 hover:border-emerald-500/60 shadow-lg hover:shadow-emerald-500/10 rounded-2xl p-5 sm:p-6 text-left transition-all duration-200 hover:-translate-y-0.5 flex items-start gap-4 group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+          >
+            <div className="shrink-0 p-3 sm:p-3.5 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 group-hover:bg-emerald-500 group-hover:text-white transition-colors">
+              <TrendingUp className="w-6 h-6" />
+            </div>
+
+            <div className="flex-1 min-w-0">
+              <div className="flex items-start justify-between gap-2">
+                <h3 className="text-sm sm:text-base font-bold text-white leading-snug">
+                  2. บันทึกการเพิ่มของเงินเดือน{' '}
+                  <span className="text-emerald-400 font-semibold">(Salary Increment)</span>
+                </h3>
+                <ArrowRight className="w-4 h-4 text-slate-500 group-hover:text-emerald-400 group-hover:translate-x-0.5 transition-all shrink-0 mt-1" />
+              </div>
+              <p className="text-xs sm:text-sm text-slate-300 mt-1.5 leading-relaxed">
+                ปรับฐานเงินเดือนตามช่วงเดือนอัตโนมัติ
+              </p>
+              <div className="mt-2.5">
+                <span className="inline-block text-[10px] sm:text-[11px] font-bold px-2.5 py-0.5 rounded-md bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                  ปรับฐานเงินเดือนตามช่วงเดือนอัตโนมัติ
+                </span>
+              </div>
+            </div>
+          </button>
+
+          {/* Card 3: Yearly Leave Records */}
+          <button
+            type="button"
+            onClick={() => setActiveModule('yearly_leave')}
+            className="w-full bg-slate-900/90 border border-slate-800 hover:border-purple-500/60 shadow-lg hover:shadow-purple-500/10 rounded-2xl p-5 sm:p-6 text-left transition-all duration-200 hover:-translate-y-0.5 flex items-start gap-4 group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400"
+          >
+            <div className="shrink-0 p-3 sm:p-3.5 rounded-xl bg-purple-500/20 border border-purple-500/40 text-purple-400 group-hover:bg-purple-500 group-hover:text-white transition-colors">
+              <CalendarDays className="w-6 h-6" />
+            </div>
+
+            <div className="flex-1 min-w-0">
+              <div className="flex items-start justify-between gap-2">
+                <h3 className="text-sm sm:text-base font-bold text-white leading-snug">
+                  3. บันทึกสถิติการลาประจำปี{' '}
+                  <span className="text-purple-400 font-semibold">(Annual Leave Records)</span>
+                </h3>
+                <ArrowRight className="w-4 h-4 text-slate-500 group-hover:text-purple-400 group-hover:translate-x-0.5 transition-all shrink-0 mt-1" />
+              </div>
+              <p className="text-xs sm:text-sm text-slate-300 mt-1.5 leading-relaxed">
+                ตรวจสอบวันลาพักร้อน (J) ลาป่วย (E) ลากิจ (D) และโควต้าวันลารอบปี
+              </p>
+            </div>
+          </button>
+
+          {/* Card 4: Annual Holidays */}
+          <button
+            type="button"
+            onClick={() => setActiveModule('holidays')}
+            className="w-full bg-slate-900/90 border border-slate-800 hover:border-amber-500/60 shadow-lg hover:shadow-amber-500/10 rounded-2xl p-5 sm:p-6 text-left transition-all duration-200 hover:-translate-y-0.5 flex items-start gap-4 group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
+          >
+            <div className="shrink-0 p-3 sm:p-3.5 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-400 group-hover:bg-amber-500 group-hover:text-white transition-colors">
+              <CalendarCheck className="w-6 h-6" />
+            </div>
+
+            <div className="flex-1 min-w-0">
+              <div className="flex items-start justify-between gap-2">
+                <h3 className="text-sm sm:text-base font-bold text-white leading-snug">
+                  4. ปฏิทินวันหยุดประจำปี{' '}
+                  <span className="text-amber-400 font-semibold">(Annual Holidays)</span>
+                </h3>
+                <ArrowRight className="w-4 h-4 text-slate-500 group-hover:text-amber-400 group-hover:translate-x-0.5 transition-all shrink-0 mt-1" />
+              </div>
+              <p className="text-xs sm:text-sm text-slate-300 mt-1.5 leading-relaxed">
+                จัดการวันหยุดประจำปี คัดลอกต้นแบบข้ามปี และนำไปใช้กับรอบวิกปัจจุบัน
+              </p>
+            </div>
+          </button>
+        </div>
+      ) : (
+        <>
+          {/* Top Sub-View Navigation Bar */}
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5 bg-white dark:bg-slate-900 rounded-2xl px-3.5 py-2.5 border border-slate-200 dark:border-slate-800 shadow-sm">
+            <button
+              type="button"
+              onClick={() => setActiveModule('hub')}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-colors whitespace-nowrap shrink-0 self-start lg:self-auto"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>กลับหน้าเมนู Overall</span>
+            </button>
+
+            {/* Quick Module Switcher across all 4 systems */}
+            <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none pb-0.5 lg:pb-0">
+              <button
+                type="button"
+                onClick={() => setActiveModule('annual_records')}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold transition-colors whitespace-nowrap shrink-0 ${
+                  activeModule === 'annual_records'
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'bg-slate-100 hover:bg-indigo-50 dark:bg-slate-800 dark:hover:bg-indigo-950/60 text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-300'
+                }`}
+              >
+                <LayoutDashboard className="w-3.5 h-3.5" />
+                <span>รายได้ประจำปี</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveModule('salary_increment')}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold transition-colors whitespace-nowrap shrink-0 ${
+                  activeModule === 'salary_increment'
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : 'bg-slate-100 hover:bg-emerald-50 dark:bg-slate-800 dark:hover:bg-emerald-950/60 text-slate-600 dark:text-slate-300 hover:text-emerald-600 dark:hover:text-emerald-300'
+                }`}
+              >
+                <TrendingUp className="w-3.5 h-3.5" />
+                <span>ปรับเงินเดือน</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveModule('yearly_leave')}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold transition-colors whitespace-nowrap shrink-0 ${
+                  activeModule === 'yearly_leave'
+                    ? 'bg-purple-600 text-white shadow-sm'
+                    : 'bg-slate-100 hover:bg-purple-50 dark:bg-slate-800 dark:hover:bg-purple-950/60 text-slate-600 dark:text-slate-300 hover:text-purple-600 dark:hover:text-purple-300'
+                }`}
+              >
+                <CalendarDays className="w-3.5 h-3.5" />
+                <span>สถิติการลา</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveModule('holidays')}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold transition-colors whitespace-nowrap shrink-0 ${
+                  activeModule === 'holidays'
+                    ? 'bg-amber-500 text-white shadow-sm'
+                    : 'bg-slate-100 hover:bg-amber-50 dark:bg-slate-800 dark:hover:bg-amber-950/60 text-slate-600 dark:text-slate-300 hover:text-amber-600 dark:hover:text-amber-300'
+                }`}
+              >
+                <CalendarCheck className="w-3.5 h-3.5" />
+                <span>วันหยุดประจำปี</span>
+              </button>
+            </div>
+          </div>
+
+          {activeModule === 'annual_records' && (
+            <>
+              {/* 1. Header Banner */}
+              <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-2xl sm:rounded-3xl p-4 sm:p-6 border border-indigo-500/20 shadow-xl text-white flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
             <span className="p-1.5 sm:p-2 rounded-xl bg-indigo-500/20 text-indigo-300">
@@ -1005,26 +1224,51 @@ export const YearlyDashboard: React.FC<YearlyDashboardProps> = ({
       </>
       )}
 
-      {/* 4. SALARY INCREMENT & ADJUSTMENT TRACKER (ระบบบันทึกการเพิ่มของเงินเดือนตามรูปที่แนบ) */}
-      <SalaryIncrementSection
-        salaryIncrements={salaryIncrements}
-        onUpdateSalaryIncrements={onUpdateSalaryIncrements}
-        settings={settings}
-        onUpdateBaseSalary={onUpdateBaseSalary}
-      />
+              {/* 5. Leave Quota & Policy Notice */}
+              <div className="bg-slate-50 dark:bg-slate-900/60 rounded-2xl p-4 sm:p-5 border border-slate-200 dark:border-slate-800 text-xs text-slate-600 dark:text-slate-400 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                  <span>
+                    สิทธิ์วันลาประจำปีที่กำหนดในระบบ: พักร้อน (J) <strong>{settings.leaveVacationQuota} วัน</strong> • ลาป่วย (E) <strong>{settings.leaveSickQuota} วัน</strong> • ลากิจ (D) <strong>{settings.leavePersonalQuota} วัน</strong>
+                  </span>
+                </div>
+                <div className="text-[11px] text-slate-400">
+                  * เกณฑ์หักสวัสดิการ (ไม่นับวันลาพักร้อน): ค่ากะ หัก 1/3 (1 วัน), 2/3 (2 วัน), 100% (3 วัน+) • เบี้ยขยัน หัก 1/2 (1 วัน), 100% (2 วัน+)
+                </div>
+              </div>
+            </>
+          )}
 
-      {/* 5. Leave Quota & Policy Notice */}
-      <div className="bg-slate-50 dark:bg-slate-900/60 rounded-2xl p-4 sm:p-5 border border-slate-200 dark:border-slate-800 text-xs text-slate-600 dark:text-slate-400 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-          <span>
-            สิทธิ์วันลาประจำปีที่กำหนดในระบบ: พักร้อน (J) <strong>{settings.leaveVacationQuota} วัน</strong> • ลาป่วย (E) <strong>{settings.leaveSickQuota} วัน</strong> • ลากิจ (D) <strong>{settings.leavePersonalQuota} วัน</strong>
-          </span>
-        </div>
-        <div className="text-[11px] text-slate-400">
-          * เกณฑ์หักสวัสดิการ (ไม่นับวันลาพักร้อน): ค่ากะ หัก 1/3 (1 วัน), 2/3 (2 วัน), 100% (3 วัน+) • เบี้ยขยัน หัก 1/2 (1 วัน), 100% (2 วัน+)
-        </div>
-      </div>
+          {activeModule === 'salary_increment' && (
+            <SalaryIncrementSection
+              salaryIncrements={salaryIncrements}
+              onUpdateSalaryIncrements={onUpdateSalaryIncrements}
+              settings={settings}
+              onUpdateBaseSalary={onUpdateBaseSalary}
+            />
+          )}
+
+          {activeModule === 'yearly_leave' && (
+            <YearlyLeaveView
+              allCycleRecords={allCycleRecords}
+              settings={settings}
+              minYear={minYear ?? startCycle.year}
+              maxYear={maxYear ?? latestCycle.year}
+            />
+          )}
+
+          {activeModule === 'holidays' && (
+            <HolidayCalendar
+              holidays={holidays}
+              onAddHoliday={onAddHoliday}
+              onUpdateHoliday={onUpdateHoliday}
+              onDeleteHoliday={onDeleteHoliday}
+              onApplyToCurrentCycle={onApplyHolidaysToCurrentCycle}
+              onCopyHolidaysFromYear={onCopyHolidaysFromYear}
+            />
+          )}
+        </>
+      )}
 
     </div>
   );

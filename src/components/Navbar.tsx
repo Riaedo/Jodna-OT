@@ -10,8 +10,6 @@ import {
   ChevronDown,
   Sun,
   Moon,
-  CalendarCheck,
-  CalendarDays,
   Menu,
   X,
   Pencil,
@@ -453,7 +451,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               }`}
             >
               <Table className="w-4 h-4" />
-              ตารางเวลา
+              แดชบอร์ด
             </button>
             <button
               onClick={() => setCurrentView('calendar')}
@@ -467,28 +465,6 @@ export const Navbar: React.FC<NavbarProps> = ({
               ปฏิทินกะ
             </button>
             <button
-              onClick={() => setCurrentView('leave')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                currentView === 'leave'
-                  ? 'bg-indigo-600 text-white shadow-sm font-bold'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-              }`}
-            >
-              <CalendarDays className="w-4 h-4" />
-              บันทึกการลา
-            </button>
-            <button
-              onClick={() => setCurrentView('holidays')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                currentView === 'holidays'
-                  ? 'bg-amber-500 text-white shadow-sm font-bold'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-              }`}
-            >
-              <CalendarCheck className="w-4 h-4" />
-              วันหยุด
-            </button>
-            <button
               onClick={() => setCurrentView('dashboard')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                 currentView === 'dashboard'
@@ -497,7 +473,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               }`}
             >
               <LayoutDashboard className="w-4 h-4" />
-              แดชบอร์ด
+              Overall
             </button>
           </div>
 
@@ -757,7 +733,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             }`}
           >
             <Table className="w-3.5 h-3.5" />
-            <span className="text-[11px] font-semibold">ตารางเวลา</span>
+            <span className="text-[11px] font-semibold">แดชบอร์ด</span>
           </button>
           <button
             onClick={() => setCurrentView('calendar')}
@@ -771,28 +747,6 @@ export const Navbar: React.FC<NavbarProps> = ({
             <span className="text-[11px] font-semibold">ปฏิทินกะ</span>
           </button>
           <button
-            onClick={() => setCurrentView('leave')}
-            className={`flex items-center gap-1.5 py-1.5 px-2.5 rounded-lg whitespace-nowrap shrink-0 transition-colors ${
-              currentView === 'leave'
-                ? 'bg-indigo-600 text-white font-bold shadow-sm'
-                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
-            }`}
-          >
-            <CalendarDays className="w-3.5 h-3.5" />
-            <span className="text-[11px] font-semibold">บันทึกการลา</span>
-          </button>
-          <button
-            onClick={() => setCurrentView('holidays')}
-            className={`flex items-center gap-1.5 py-1.5 px-2.5 rounded-lg whitespace-nowrap shrink-0 transition-colors ${
-              currentView === 'holidays'
-                ? 'bg-amber-500 text-white font-bold shadow-sm'
-                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
-            }`}
-          >
-            <CalendarCheck className="w-3.5 h-3.5" />
-            <span className="text-[11px] font-semibold">วันหยุด</span>
-          </button>
-          <button
             onClick={() => setCurrentView('dashboard')}
             className={`flex items-center gap-1.5 py-1.5 px-2.5 rounded-lg whitespace-nowrap shrink-0 transition-colors ${
               currentView === 'dashboard'
@@ -801,7 +755,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             }`}
           >
             <LayoutDashboard className="w-3.5 h-3.5" />
-            <span className="text-[11px] font-semibold">แดชบอร์ด</span>
+            <span className="text-[11px] font-semibold">Overall</span>
           </button>
         </div>
 

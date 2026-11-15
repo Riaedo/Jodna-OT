@@ -20,13 +20,11 @@ import { MainMetricsCards } from './components/MainMetricsCards';
 import { OTShareCard } from './components/OTShareCard';
 import { TimesheetTable } from './components/TimesheetTable';
 import { CalendarView } from './components/CalendarView';
-import { YearlyLeaveView } from './components/YearlyLeaveView';
-import { HolidayCalendar } from './components/HolidayCalendar';
 import { RecordModal } from './components/RecordModal';
 import { SettingsModal } from './components/SettingsModal';
 import { PaySlipModal } from './components/PaySlipModal';
 import { BrandEditModal } from './components/BrandEditModal';
-import { YearlyDashboard } from './components/YearlyDashboard';
+import { YearlyDashboard, OverallModule } from './components/YearlyDashboard';
 import { useAuth } from './context/AuthContext';
 import { useMoneyVisibility } from './context/MoneyVisibilityContext';
 import { auth } from './firebase';
@@ -231,8 +229,10 @@ export default function App() {
   // Cycle taxes state starts clean/empty — never read from unscoped LocalStorage
   const [cycleTaxes, setCycleTaxes] = useState<Record<string, number>>({});
 
-  // Views ('timesheet' | 'calendar' | 'holidays' | 'leave' | 'dashboard')
+  // Views ('timesheet' | 'calendar' | 'dashboard')
   const [currentView, setCurrentView] = useState<AppView>('timesheet');
+  const [overallResetSignal, setOverallResetSignal] = useState<number>(0);
+  const [overallNavTarget, setOverallNavTarget] = useState<{ module: OverallModule; nonce: number } | null>(null);
 
   // Modals state
   const [selectedRecord, setSelectedRecord] = useState<DailyRecord | null>(null);
@@ -344,6 +344,7 @@ export default function App() {
     setIsResetConfirmModalOpen(false);
     setResetStartDateInput('');
     setCurrentView('timesheet');
+    setOverallNavTarget(null);
 
     const period = getCyclePeriodForDate(undefined, 20, 19);
     setCycleOffset(getMonthDiff(2026, 9, period.cycleYear, period.cycleMonth));
@@ -1673,6 +1674,12 @@ export default function App() {
             requireLoginNotice();
             return;
           }
+          if (view === 'dashboard') {
+            setOverallNavTarget(null);
+            if (currentView === 'dashboard') {
+              setOverallResetSignal((prev) => prev + 1);
+            }
+          }
           setCurrentView(view);
         }}
         onOpenRecordModal={handleQuickAdd}
@@ -1838,7 +1845,10 @@ export default function App() {
                   summary={summary}
                   settings={currentCycleSettings}
                   cycleYear={targetYear}
-                  onGoToLeaveView={() => setCurrentView('leave')}
+                  onGoToLeaveView={() => {
+                    setOverallNavTarget({ module: 'yearly_leave', nonce: Date.now() });
+                    setCurrentView('dashboard');
+                  }}
                 />
 
                 {/* ตารางบันทึกเวลา (หน้าเดียว) */}
@@ -1932,33 +1942,7 @@ export default function App() {
               </div>
             )}
 
-            {/* 3. YEARLY LEAVE VIEW (Annual leave summary with customizable year cycle) */}
-            {currentView === 'leave' && (
-              <div className="space-y-6">
-                <YearlyLeaveView
-                  allCycleRecords={allCycleRecords}
-                  settings={settings}
-                  minYear={startCycle.year}
-                  maxYear={latestCycle.year}
-                />
-              </div>
-            )}
-
-            {/* 4. HOLIDAY CALENDAR VIEW (12: Filtered by year, 6: คีย์ข้อมูลขึ้นมาเอง) */}
-            {currentView === 'holidays' && (
-              <div className="space-y-6">
-                <HolidayCalendar
-                  holidays={holidays}
-                  onAddHoliday={handleAddHoliday}
-                  onUpdateHoliday={handleUpdateHoliday}
-                  onDeleteHoliday={handleDeleteHoliday}
-                  onApplyToCurrentCycle={handleApplyHolidaysToCurrentCycle}
-                  onCopyHolidaysFromYear={handleCopyHolidaysFromYear}
-                />
-              </div>
-            )}
-
-            {/* 5. YEARLY DASHBOARD VIEW */}
+            {/* 3. OVERALL HUB VIEW (Annual Financial, Salary Increment, Yearly Leave & Annual Holidays) */}
             {currentView === 'dashboard' && (
               <div className="space-y-6">
                 <YearlyDashboard
@@ -1968,6 +1952,16 @@ export default function App() {
                   salaryIncrements={salaryIncrements}
                   onUpdateSalaryIncrements={handleUpdateSalaryIncrements}
                   onUpdateCycleTax={handleUpdateCycleTax}
+                  resetToHubSignal={overallResetSignal}
+                  requestedModule={overallNavTarget}
+                  minYear={startCycle.year}
+                  maxYear={latestCycle.year}
+                  holidays={holidays}
+                  onAddHoliday={handleAddHoliday}
+                  onUpdateHoliday={handleUpdateHoliday}
+                  onDeleteHoliday={handleDeleteHoliday}
+                  onApplyHolidaysToCurrentCycle={handleApplyHolidaysToCurrentCycle}
+                  onCopyHolidaysFromYear={handleCopyHolidaysFromYear}
                   onNavigateToCycle={(navYear, navMonth) => {
                     const baseYear = 2026;
                     const baseMonth = 9;
