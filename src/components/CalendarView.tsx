@@ -23,7 +23,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
   const hasWorkStartDate = Boolean(settings.workStartDate && settings.workStartDate.trim() !== '');
 
   const { leadingPadding, trailingPadding } = useMemo(() => {
-    if (!hasWorkStartDate || !records || records.length === 0) {
+    if ((!hasWorkStartDate && (!records || records.length === 0)) || !records || records.length === 0) {
       return { leadingPadding: 0, trailingPadding: 0 };
     }
     const startPad = new Date(records[0].date + 'T00:00:00').getDay();
@@ -31,7 +31,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
     return { leadingPadding: startPad, trailingPadding: trailingPad };
   }, [records, hasWorkStartDate]);
 
-  if (!hasWorkStartDate || !records || records.length === 0) {
+  if (!records || records.length === 0) {
     return (
       <div className="bg-white dark:bg-slate-900 rounded-3xl p-8 sm:p-12 text-center border border-slate-200 dark:border-slate-800 shadow-sm max-w-lg mx-auto space-y-4 my-8">
         <div className="w-14 h-14 rounded-2xl bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto shadow-inner">

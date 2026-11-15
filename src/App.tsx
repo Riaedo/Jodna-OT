@@ -54,12 +54,21 @@ import {
   enqueuePendingSync,
   flushPendingSyncQueue,
   hasPendingSync,
+  clearPendingSyncForCycle,
+  clearPendingSyncForSettings,
   overlayPendingSyncOnSettings,
   overlayPendingSyncOnCycles,
   overlayPendingSyncOnHolidays,
   overlayPendingSyncOnIncrements,
 } from './services/offlineSyncQueue';
 import { copyHolidaysToYear } from './utils/holidayManager';
+import {
+  resolveCurrentCycleRecords,
+  buildSettingsFromRemote,
+  sanitizeDailyRecord,
+  applyUpdatedRecordToCycle,
+  deriveAutoWorkStartDate,
+} from './utils/recordSyncHelpers';
 import { 
   CheckCircle,
   RefreshCw,
@@ -206,15 +215,17 @@ export default function App() {
     return isSamePeriod(selectedPeriod, currentPeriod);
   }, [selectedPeriod, currentPeriod]);
 
-  // Active cycle records
+  // Active cycle records (always show saved cycle records even if workStartDate is not yet set)
   const currentRecords = useMemo(() => {
-    if (!hasWorkStartDate) return [];
-    if (allCycleRecords[cycleKey] && allCycleRecords[cycleKey].length > 0) {
-      // Ensure all dates are valid calendar dates
-      return allCycleRecords[cycleKey].filter((r) => isValidDateString(r.date));
-    }
-    const fresh = createCycleRecords(targetYear, targetMonth, settings, holidays);
-    return fresh;
+    return resolveCurrentCycleRecords(
+      allCycleRecords,
+      cycleKey,
+      hasWorkStartDate,
+      targetYear,
+      targetMonth,
+      settings,
+      holidays
+    );
   }, [hasWorkStartDate, allCycleRecords, cycleKey, targetYear, targetMonth, settings, holidays]);
 
   // Cycle taxes state starts clean/empty — never read from unscoped LocalStorage
@@ -443,6 +454,9 @@ export default function App() {
     // Safety timeout: ensure UI is not blocked indefinitely if offline
     const fallbackTimer = setTimeout(() => {
       if (isSessionValid() && !isCloudLoadedRef.current) {
+        if (!settingsLoadedRef.current) skipNextSettingsSyncRef.current = true;
+        if (!holidaysLoadedRef.current) skipNextHolidaysSyncRef.current = true;
+        if (!incrementsLoadedRef.current) skipNextIncrementsSyncRef.current = true;
         isCloudLoadedRef.current = true;
         setIsCloudLoaded(true);
         setSyncStatus(
@@ -478,23 +492,19 @@ export default function App() {
       (err) => console.error('Profile listener error:', err)
     );
 
-    // 2. Settings Real-time listener (replaces with DEFAULT_SETTINGS if account has no doc yet!)
+    // 2. Settings Real-time listener (preserves cached/default workStartDate if remote is empty)
     const unsubSettings = subscribeUserSettings(
       sessionUid,
-      (remoteSettings) => {
+      (remoteSettings, remoteUpdatedAt) => {
         if (!isSessionValid()) return;
         settingsLoadedRef.current = true;
-        const baseSettings: PayrollSettings = remoteSettings
-          ? {
-              ...DEFAULT_SETTINGS,
-              ...remoteSettings,
-              yearlyVacationQuotas:
-                remoteSettings.yearlyVacationQuotas || DEFAULT_SETTINGS.yearlyVacationQuotas,
-              workStartDate:
-                remoteSettings.workStartDate !== undefined ? remoteSettings.workStartDate : '',
-            }
-          : { ...DEFAULT_SETTINGS };
-        const resolved = overlayPendingSyncOnSettings(sessionUid, baseSettings);
+        const latestCached = loadUserLocalCache(sessionUid);
+        const baseSettings = buildSettingsFromRemote(
+          remoteSettings,
+          latestCached.hasCachedData,
+          latestCached.settings
+        );
+        const resolved = overlayPendingSyncOnSettings(sessionUid, baseSettings, remoteUpdatedAt);
         skipNextSettingsSyncRef.current = true;
         setSettings(resolved);
         saveUserLocalCache(sessionUid, { settings: resolved });
@@ -508,16 +518,17 @@ export default function App() {
       }
     );
 
-    // 3. Cycles & Taxes Real-time listener (replaces with empty {} if account has no cycles!)
+    // 3. Cycles & Taxes Real-time listener (passes remoteUpdatedAtMap so stale pending items never overwrite newer cloud data)
     const unsubCycles = subscribeUserCycles(
       sessionUid,
-      (remoteCycles, remoteTaxes) => {
+      (remoteCycles, remoteTaxes, remoteUpdatedAtMap) => {
         if (!isSessionValid()) return;
         cyclesLoadedRef.current = true;
         const overlaid = overlayPendingSyncOnCycles(
           sessionUid,
           remoteCycles || {},
-          remoteTaxes || {}
+          remoteTaxes || {},
+          remoteUpdatedAtMap || {}
         );
         setAllCycleRecords(overlaid.cycles);
         setCycleTaxes(overlaid.taxes);
@@ -636,7 +647,9 @@ export default function App() {
         return;
       }
       try {
+        const writeStartMs = Date.now();
         await saveUserSettings(sessionUid, settings);
+        clearPendingSyncForSettings(sessionUid, writeStartMs);
         if (authSessionSeqRef.current === sessionSeq && auth.currentUser?.uid === sessionUid) {
           setSyncStatus(hasPendingSync(sessionUid) ? 'offline' : 'synced');
         }
@@ -856,7 +869,9 @@ export default function App() {
 
       setSyncStatus('saving');
       try {
+        const writeStartMs = Date.now();
         await saveUserCycle(sessionUid, cKey, recordsForCycle, val);
+        clearPendingSyncForCycle(sessionUid, cKey, writeStartMs);
         if (authSessionSeqRef.current === sessionSeq && auth.currentUser?.uid === sessionUid) {
           setSyncStatus('synced');
           showToast('อัปเดตภาษีสำเร็จ (บันทึกบนคลาวด์)');
@@ -1043,36 +1058,78 @@ export default function App() {
 
   // Update a single record (done through calendar)
   const handleUpdateRecord = async (updated: DailyRecord) => {
-    const existing = allCycleRecords[cycleKey] || currentRecords;
-    const nextList = existing.map((r) => (r.id === updated.id ? updated : r));
+    const cleanUpdated = sanitizeDailyRecord(updated);
+    const existing = allCycleRecords[cycleKey];
+    const baseList =
+      existing && existing.length > 0
+        ? existing
+        : currentRecords.length > 0
+          ? currentRecords
+          : createCycleRecords(targetYear, targetMonth, settings, holidays);
+
+    const finalRecords = applyUpdatedRecordToCycle(baseList, cleanUpdated);
     const nextCycles = {
       ...allCycleRecords,
-      [cycleKey]: nextList,
+      [cycleKey]: finalRecords,
     };
-    setAllCycleRecords(nextCycles);
 
-    if (user && isCloudLoaded) {
+    setAllCycleRecords((prev) => {
+      const prevList = prev[cycleKey] && prev[cycleKey].length > 0 ? prev[cycleKey] : baseList;
+      return {
+        ...prev,
+        [cycleKey]: applyUpdatedRecordToCycle(prevList, cleanUpdated),
+      };
+    });
+
+    // Auto-set workStartDate if blank so TimesheetTable/CalendarView/Navbar never hide saved records
+    let nextSettingsToPersist: PayrollSettings | null = null;
+    if (!settings.workStartDate || settings.workStartDate.trim() === '') {
+      const autoStartDate = deriveAutoWorkStartDate(cleanUpdated.date, targetYear);
+      nextSettingsToPersist = {
+        ...settings,
+        workStartDate: autoStartDate,
+      };
+      skipNextSettingsSyncRef.current = true;
+      setSettings(nextSettingsToPersist);
+    }
+
+    const currentTax = cycleTaxes[cycleKey] ?? 0;
+
+    if (user) {
       const sessionUid = user.uid;
       const sessionSeq = authSessionSeqRef.current;
-      saveUserLocalCache(sessionUid, { allCycleRecords: nextCycles });
+
+      saveUserLocalCache(sessionUid, {
+        allCycleRecords: nextCycles,
+        ...(nextSettingsToPersist ? { settings: nextSettingsToPersist } : {}),
+      });
 
       if (typeof navigator !== 'undefined' && navigator.onLine === false) {
         enqueuePendingSync(sessionUid, 'SAVE_CYCLE', {
           cycleKey,
-          records: nextList,
-          taxPaid: cycleTaxes[cycleKey],
+          records: finalRecords,
+          taxPaid: currentTax,
         });
+        if (nextSettingsToPersist) {
+          enqueuePendingSync(sessionUid, 'SAVE_SETTINGS', { settings: nextSettingsToPersist });
+        }
         setSyncStatus('offline');
-        showToast(`บันทึกข้อมูลวันที่ ${updated.dayNumber} แบบออฟไลน์แล้ว (รอซิงค์เมื่อออนไลน์)`);
+        showToast(`บันทึกข้อมูลวันที่ ${cleanUpdated.dayNumber} แบบออฟไลน์แล้ว (รอซิงค์เมื่อออนไลน์)`);
         return;
       }
 
       setSyncStatus('saving');
       try {
-        await saveUserCycle(sessionUid, cycleKey, nextList, cycleTaxes[cycleKey]);
+        const writeStartMs = Date.now();
+        await saveUserCycle(sessionUid, cycleKey, finalRecords, currentTax);
+        clearPendingSyncForCycle(sessionUid, cycleKey, writeStartMs);
+        if (nextSettingsToPersist) {
+          await saveUserSettings(sessionUid, nextSettingsToPersist);
+          clearPendingSyncForSettings(sessionUid, writeStartMs);
+        }
         if (authSessionSeqRef.current === sessionSeq && auth.currentUser?.uid === sessionUid) {
           setSyncStatus('synced');
-          showToast(`บันทึกข้อมูลวันที่ ${updated.dayNumber} สำเร็จ (บันทึกบนคลาวด์แล้ว)`);
+          showToast(`บันทึกข้อมูลวันที่ ${cleanUpdated.dayNumber} สำเร็จ (บันทึกบนคลาวด์แล้ว)`);
         }
       } catch (e: any) {
         console.error('Failed to save record to cloud:', e);
@@ -1082,18 +1139,21 @@ export default function App() {
         if (isNetworkOrOfflineError(e)) {
           enqueuePendingSync(sessionUid, 'SAVE_CYCLE', {
             cycleKey,
-            records: nextList,
-            taxPaid: cycleTaxes[cycleKey],
+            records: finalRecords,
+            taxPaid: currentTax,
           });
+          if (nextSettingsToPersist) {
+            enqueuePendingSync(sessionUid, 'SAVE_SETTINGS', { settings: nextSettingsToPersist });
+          }
           setSyncStatus('offline');
-          showToast(`บันทึกข้อมูลวันที่ ${updated.dayNumber} แบบออฟไลน์แล้ว (รอซิงค์เมื่อออนไลน์)`);
+          showToast(`บันทึกข้อมูลวันที่ ${cleanUpdated.dayNumber} แบบออฟไลน์แล้ว (รอซิงค์เมื่อออนไลน์)`);
         } else {
           setSyncStatus('error');
           showToast(`บันทึกบนคลาวด์ไม่สำเร็จ: ${e?.message || 'โปรดตรวจสอบการเชื่อมต่อ'}`);
         }
       }
     } else {
-      showToast(`บันทึกข้อมูลวันที่ ${updated.dayNumber} สำเร็จ`);
+      showToast(`บันทึกข้อมูลวันที่ ${cleanUpdated.dayNumber} สำเร็จ`);
     }
   };
 
@@ -1125,6 +1185,8 @@ export default function App() {
     };
     setAllCycleRecords(nextCycles);
 
+    const currentTax = cycleTaxes[cycleKey] ?? 0;
+
     if (user && isCloudLoaded) {
       const sessionUid = user.uid;
       const sessionSeq = authSessionSeqRef.current;
@@ -1134,7 +1196,7 @@ export default function App() {
         enqueuePendingSync(sessionUid, 'SAVE_CYCLE', {
           cycleKey,
           records: merged,
-          taxPaid: cycleTaxes[cycleKey],
+          taxPaid: currentTax,
         });
         setSyncStatus('offline');
         showToast(`จัดตารางกะ ${settings.shiftGroup} แบบออฟไลน์แล้ว`);
@@ -1143,7 +1205,9 @@ export default function App() {
 
       setSyncStatus('saving');
       try {
-        await saveUserCycle(sessionUid, cycleKey, merged, cycleTaxes[cycleKey]);
+        const writeStartMs = Date.now();
+        await saveUserCycle(sessionUid, cycleKey, merged, currentTax);
+        clearPendingSyncForCycle(sessionUid, cycleKey, writeStartMs);
         if (authSessionSeqRef.current === sessionSeq && auth.currentUser?.uid === sessionUid) {
           setSyncStatus('synced');
           showToast(`จัดตารางกะ ${settings.shiftGroup} สำเร็จ (บันทึกบนคลาวด์แล้ว)`);
@@ -1376,6 +1440,8 @@ export default function App() {
     };
     setAllCycleRecords(nextCycles);
 
+    const currentTax = cycleTaxes[cycleKey] ?? 0;
+
     if (user && isCloudLoaded) {
       const sessionUid = user.uid;
       const sessionSeq = authSessionSeqRef.current;
@@ -1385,7 +1451,7 @@ export default function App() {
         enqueuePendingSync(sessionUid, 'SAVE_CYCLE', {
           cycleKey,
           records: updatedList,
-          taxPaid: cycleTaxes[cycleKey],
+          taxPaid: currentTax,
         });
         setSyncStatus('offline');
         showToast('นำวันหยุดไปใช้กับรอบนี้แบบออฟไลน์แล้ว');
@@ -1394,7 +1460,9 @@ export default function App() {
 
       setSyncStatus('saving');
       try {
-        await saveUserCycle(sessionUid, cycleKey, updatedList, cycleTaxes[cycleKey]);
+        const writeStartMs = Date.now();
+        await saveUserCycle(sessionUid, cycleKey, updatedList, currentTax);
+        clearPendingSyncForCycle(sessionUid, cycleKey, writeStartMs);
         if (authSessionSeqRef.current === sessionSeq && auth.currentUser?.uid === sessionUid) {
           setSyncStatus('synced');
           showToast('นำวันหยุดไปใช้กับรอบนี้สำเร็จ (บันทึกบนคลาวด์แล้ว)');

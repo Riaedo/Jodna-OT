@@ -210,6 +210,58 @@ export function clearPendingSyncQueue(uid: string): void {
 }
 
 /**
+ * Clear queued SAVE_CYCLE entries for a specific cycleKey (optionally up to `upToTimestamp`)
+ * once an online direct save succeeds, without dropping newer offline edits.
+ */
+export function clearPendingSyncForCycle(
+  uid: string,
+  cycleKey: string,
+  upToTimestamp?: number
+): void {
+  if (!uid || !cycleKey) return;
+  const queue = getPendingSyncQueue(uid);
+  if (queue.length === 0) return;
+
+  const nextQueue = queue.filter((item) => {
+    if (item.type === 'SAVE_CYCLE' && item.payload?.cycleKey === cycleKey) {
+      if (typeof upToTimestamp === 'number') {
+        return item.timestamp > upToTimestamp;
+      }
+      return false;
+    }
+    return true;
+  });
+
+  if (nextQueue.length !== queue.length) {
+    writePendingSyncQueue(uid, nextQueue);
+  }
+}
+
+/**
+ * Clear queued SAVE_SETTINGS entries (optionally up to `upToTimestamp`)
+ * once an online direct save succeeds.
+ */
+export function clearPendingSyncForSettings(uid: string, upToTimestamp?: number): void {
+  if (!uid) return;
+  const queue = getPendingSyncQueue(uid);
+  if (queue.length === 0) return;
+
+  const nextQueue = queue.filter((item) => {
+    if (item.type === 'SAVE_SETTINGS') {
+      if (typeof upToTimestamp === 'number') {
+        return item.timestamp > upToTimestamp;
+      }
+      return false;
+    }
+    return true;
+  });
+
+  if (nextQueue.length !== queue.length) {
+    writePendingSyncQueue(uid, nextQueue);
+  }
+}
+
+/**
  * Flush queued offline mutations strictly for `uid`.
  * Aborts immediately if active session UID changes or goes offline mid-flush.
  */
@@ -250,7 +302,7 @@ export async function flushPendingSyncQueue(
               uid,
               item.payload.cycleKey,
               item.payload.records,
-              item.payload.taxPaid
+              item.payload.taxPaid ?? 0
             );
           }
           break;
@@ -344,40 +396,84 @@ export function saveUserLocalCache(
 /**
  * Apply any pending offline sync items for `uid` on top of base state (e.g. cloud snapshot or local cache)
  * so unsynced offline edits are preserved and visible when the same UID logs back in.
+ * If `cloudUpdatedAt` is >= the queued item timestamp, the cloud data wins and the stale item is pruned.
  */
-export function overlayPendingSyncOnSettings(uid: string, base: PayrollSettings): PayrollSettings {
+export function overlayPendingSyncOnSettings(
+  uid: string,
+  base: PayrollSettings,
+  cloudUpdatedAt?: string
+): PayrollSettings {
   const queue = getPendingSyncQueue(uid);
+  if (queue.length === 0) return base;
+
+  const cloudUpdatedMs = cloudUpdatedAt ? Date.parse(cloudUpdatedAt) : NaN;
   let result = base;
+  const staleIds = new Set<string>();
+
   for (const item of queue) {
     if (item.type === 'SAVE_SETTINGS' && item.payload?.settings) {
+      if (Number.isFinite(cloudUpdatedMs) && cloudUpdatedMs >= item.timestamp) {
+        staleIds.add(item.id);
+        continue;
+      }
       result = {
         ...DEFAULT_SETTINGS,
         ...item.payload.settings,
       };
     }
   }
+
+  if (staleIds.size > 0) {
+    writePendingSyncQueue(
+      uid,
+      queue.filter((q) => !staleIds.has(q.id))
+    );
+  }
+
   return result;
 }
 
 export function overlayPendingSyncOnCycles(
   uid: string,
   baseCycles: Record<string, DailyRecord[]>,
-  baseTaxes: Record<string, number>
+  baseTaxes: Record<string, number>,
+  cloudUpdatedAtMap?: Record<string, string>
 ): { cycles: Record<string, DailyRecord[]>; taxes: Record<string, number> } {
   const queue = getPendingSyncQueue(uid);
   const cycles = { ...baseCycles };
   const taxes = { ...baseTaxes };
+  if (queue.length === 0) return { cycles, taxes };
+
+  const staleIds = new Set<string>();
 
   for (const item of queue) {
     if (item.type === 'SAVE_CYCLE' && item.payload?.cycleKey) {
+      const cKey = item.payload.cycleKey;
+      const cloudUpdatedStr = cloudUpdatedAtMap?.[cKey];
+      const cloudUpdatedMs = cloudUpdatedStr ? Date.parse(cloudUpdatedStr) : NaN;
+      const hasCloudRecords = Array.isArray(baseCycles[cKey]);
+
+      if (hasCloudRecords && Number.isFinite(cloudUpdatedMs) && cloudUpdatedMs >= item.timestamp) {
+        staleIds.add(item.id);
+        continue;
+      }
+
       if (Array.isArray(item.payload.records)) {
-        cycles[item.payload.cycleKey] = item.payload.records;
+        cycles[cKey] = item.payload.records;
       }
       if (typeof item.payload.taxPaid === 'number') {
-        taxes[item.payload.cycleKey] = item.payload.taxPaid;
+        taxes[cKey] = item.payload.taxPaid;
       }
     }
   }
+
+  if (staleIds.size > 0) {
+    writePendingSyncQueue(
+      uid,
+      queue.filter((q) => !staleIds.has(q.id))
+    );
+  }
+
   return { cycles, taxes };
 }
 
