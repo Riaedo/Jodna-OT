@@ -17,7 +17,8 @@ import {
   Calendar,
   LayoutDashboard,
   Eye,
-  EyeOff
+  EyeOff,
+  FileImage
 } from 'lucide-react';
 import { PayrollSettings, AppView } from '../types/overtime';
 import { renderAppIcon } from './BrandEditModal';
@@ -31,6 +32,7 @@ interface NavbarProps {
   onOpenRecordModal: () => void;
   onOpenSettingsModal: () => void;
   onOpenPaySlipModal: () => void;
+  onOpenPaySlipVault?: () => void;
   onOpenBrandEditModal?: () => void;
   onExportCsv: () => void;
   onResetData: () => void;
@@ -63,6 +65,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenRecordModal,
   onOpenSettingsModal,
   onOpenPaySlipModal,
+  onOpenPaySlipVault,
   onOpenBrandEditModal,
   onExportCsv,
   onResetData,
@@ -596,6 +599,34 @@ export const Navbar: React.FC<NavbarProps> = ({
                       </span>
                     </div>
                   </button>
+
+                  {/* 3. PaySlip Photo Vault & PDF Button */}
+                  {onOpenPaySlipVault && (
+                    <button
+                      onClick={() => {
+                        setIsMenuOpen(false);
+                        onOpenPaySlipVault();
+                      }}
+                      className="w-full flex items-center gap-2.5 px-2.5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-50 to-indigo-50/80 dark:from-cyan-950/40 dark:to-indigo-950/30 hover:from-cyan-100 hover:to-indigo-100 dark:hover:from-cyan-900/50 dark:hover:to-indigo-900/40 border border-cyan-200/80 dark:border-cyan-800/50 text-left transition-all group"
+                    >
+                      <div className="p-2 rounded-lg bg-cyan-600 text-white shadow-sm shadow-cyan-600/30 group-hover:scale-105 transition-transform">
+                        <FileImage className="w-4 h-4" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs font-bold text-cyan-900 dark:text-cyan-200 block">
+                            คลังภาพสลิป &amp; PDF
+                          </span>
+                          <span className="text-[9px] font-bold px-1 rounded bg-cyan-600/10 text-cyan-700 dark:text-cyan-300">
+                            JPG/PNG → PDF
+                          </span>
+                        </div>
+                        <span className="text-[10px] text-cyan-700/80 dark:text-cyan-400/80 truncate block mt-0.5">
+                          อัปโหลด/ถ่ายภาพสลิปและดาวน์โหลดรายงาน PDF
+                        </span>
+                      </div>
+                    </button>
+                  )}
 
                   <div className="my-1 border-t border-slate-100 dark:border-slate-800" />
                   

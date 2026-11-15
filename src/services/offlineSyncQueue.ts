@@ -1,4 +1,4 @@
-import { DailyRecord, Holiday, PayrollSettings, SalaryIncrementRecord } from '../types/overtime';
+import { DailyRecord, Holiday, PayrollSettings, SalaryIncrementRecord, PaySlipAttachment } from '../types/overtime';
 import { DEFAULT_SETTINGS } from '../data/initialData';
 import { auth } from '../firebase';
 import {
@@ -8,6 +8,8 @@ import {
   deleteUserHoliday,
   saveUserSalaryIncrements,
   deleteUserSalaryIncrement,
+  saveUserPaySlip,
+  deleteUserPaySlip,
 } from './firestoreSync';
 
 export type PendingSyncType =
@@ -16,7 +18,9 @@ export type PendingSyncType =
   | 'SAVE_HOLIDAYS'
   | 'DELETE_HOLIDAY'
   | 'SAVE_SALARY_INCREMENTS'
-  | 'DELETE_SALARY_INCREMENT';
+  | 'DELETE_SALARY_INCREMENT'
+  | 'SAVE_PAYSLIP'
+  | 'DELETE_PAYSLIP';
 
 export interface PendingSyncItem {
   id: string;
@@ -32,6 +36,7 @@ export interface UserLocalCacheData {
   cycleTaxes: Record<string, number>;
   holidays: Holiday[];
   salaryIncrements: SalaryIncrementRecord[];
+  paySlips: PaySlipAttachment[];
   appliedResetVersion: string | null;
   hasCachedData: boolean;
 }
@@ -54,6 +59,7 @@ function getUidCacheKeys(uid: string) {
     taxes: `${prefix}cycle_taxes_v1`,
     holidays: `${prefix}holidays_v1`,
     increments: `${prefix}salary_increments_v1`,
+    paySlips: `${prefix}pay_slips_v1`,
     resetVersion: `${prefix}applied_reset_version`,
     pendingSync: `${prefix}pending_sync_v1`,
   };
@@ -187,6 +193,20 @@ export function enqueuePendingSync(
             (!item.payload?.records || item.payload.records.length === 0)
           )
       );
+  } else if (type === 'SAVE_PAYSLIP') {
+    const slipId = payload?.slip?.id;
+    filtered = current.filter(
+      (item) =>
+        !(item.type === 'SAVE_PAYSLIP' && item.payload?.slip?.id === slipId) &&
+        !(item.type === 'DELETE_PAYSLIP' && item.payload?.slipId === slipId)
+    );
+  } else if (type === 'DELETE_PAYSLIP') {
+    const slipId = payload?.slipId;
+    filtered = current.filter(
+      (item) =>
+        !(item.type === 'SAVE_PAYSLIP' && item.payload?.slip?.id === slipId) &&
+        !(item.type === 'DELETE_PAYSLIP' && item.payload?.slipId === slipId)
+    );
   }
 
   filtered.push({
@@ -248,6 +268,32 @@ export function clearPendingSyncForSettings(uid: string, upToTimestamp?: number)
 
   const nextQueue = queue.filter((item) => {
     if (item.type === 'SAVE_SETTINGS') {
+      if (typeof upToTimestamp === 'number') {
+        return item.timestamp > upToTimestamp;
+      }
+      return false;
+    }
+    return true;
+  });
+
+  if (nextQueue.length !== queue.length) {
+    writePendingSyncQueue(uid, nextQueue);
+  }
+}
+
+export function clearPendingSyncForPaySlip(
+  uid: string,
+  slipId: string,
+  upToTimestamp?: number
+): void {
+  if (!uid || !slipId) return;
+  const queue = getPendingSyncQueue(uid);
+  if (queue.length === 0) return;
+
+  const nextQueue = queue.filter((item) => {
+    const matchesSave = item.type === 'SAVE_PAYSLIP' && item.payload?.slip?.id === slipId;
+    const matchesDelete = item.type === 'DELETE_PAYSLIP' && item.payload?.slipId === slipId;
+    if (matchesSave || matchesDelete) {
       if (typeof upToTimestamp === 'number') {
         return item.timestamp > upToTimestamp;
       }
@@ -326,6 +372,16 @@ export async function flushPendingSyncQueue(
             await deleteUserSalaryIncrement(uid, item.payload.recordId);
           }
           break;
+        case 'SAVE_PAYSLIP':
+          if (item.payload?.slip) {
+            await saveUserPaySlip(uid, item.payload.slip);
+          }
+          break;
+        case 'DELETE_PAYSLIP':
+          if (item.payload?.slipId) {
+            await deleteUserPaySlip(uid, item.payload.slipId);
+          }
+          break;
       }
 
       // Verify UID is still active before marking done
@@ -364,6 +420,7 @@ export function saveUserLocalCache(
     cycleTaxes: Record<string, number>;
     holidays: Holiday[];
     salaryIncrements: SalaryIncrementRecord[];
+    paySlips: PaySlipAttachment[];
     appliedResetVersion: string;
   }>
 ): void {
@@ -390,6 +447,15 @@ export function saveUserLocalCache(
     }
   } catch (e) {
     console.error('Failed to save UID-scoped local cache:', e);
+  }
+
+  // Persist pay slip cache in its own try/catch so image payload never blocks core settings/cycles
+  if (data.paySlips !== undefined) {
+    try {
+      localStorage.setItem(keys.paySlips, JSON.stringify(data.paySlips));
+    } catch (e) {
+      console.warn('PaySlip local cache quota reached; keeping cloud sync active:', e);
+    }
   }
 }
 
@@ -512,6 +578,33 @@ export function overlayPendingSyncOnIncrements(
   return result;
 }
 
+export function overlayPendingSyncOnPaySlips(
+  uid: string,
+  basePaySlips: PaySlipAttachment[]
+): PaySlipAttachment[] {
+  const queue = getPendingSyncQueue(uid);
+  const map = new Map<string, PaySlipAttachment>();
+  basePaySlips.forEach((s) => map.set(s.id, s));
+
+  for (const item of queue) {
+    if (item.type === 'SAVE_PAYSLIP' && item.payload?.slip?.id) {
+      const slip = item.payload.slip as PaySlipAttachment;
+      const existing = map.get(slip.id);
+      const existingUpdated = existing?.updatedAt ? Date.parse(existing.updatedAt) : NaN;
+      const pendingUpdated = slip.updatedAt ? Date.parse(slip.updatedAt) : item.timestamp;
+      if (!existing || !Number.isFinite(existingUpdated) || pendingUpdated >= existingUpdated) {
+        map.set(slip.id, slip);
+      }
+    } else if (item.type === 'DELETE_PAYSLIP' && item.payload?.slipId) {
+      map.delete(item.payload.slipId);
+    }
+  }
+
+  return Array.from(map.values()).sort((a, b) =>
+    (b.createdAt || '').localeCompare(a.createdAt || '')
+  );
+}
+
 /**
  * Load UID-scoped LocalStorage cache + overlay pending sync queue for that exact UID.
  */
@@ -522,6 +615,7 @@ export function loadUserLocalCache(uid: string): UserLocalCacheData {
     cycleTaxes: {},
     holidays: [],
     salaryIncrements: [],
+    paySlips: [],
     appliedResetVersion: null,
     hasCachedData: false,
   };
@@ -584,6 +678,16 @@ export function loadUserLocalCache(uid: string): UserLocalCacheData {
       }
     }
 
+    let paySlips: PaySlipAttachment[] = [];
+    const rawPaySlips = localStorage.getItem(keys.paySlips);
+    if (rawPaySlips) {
+      const parsed = JSON.parse(rawPaySlips);
+      if (Array.isArray(parsed)) {
+        paySlips = parsed;
+        hasCachedData = true;
+      }
+    }
+
     const appliedResetVersion = localStorage.getItem(keys.resetVersion);
 
     // Overlay any pending offline mutations for this exact UID
@@ -593,6 +697,7 @@ export function loadUserLocalCache(uid: string): UserLocalCacheData {
     cycleTaxes = overlaidCycles.taxes;
     holidays = overlayPendingSyncOnHolidays(uid, holidays);
     salaryIncrements = overlayPendingSyncOnIncrements(uid, salaryIncrements);
+    paySlips = overlayPendingSyncOnPaySlips(uid, paySlips);
 
     if (hasPendingSync(uid)) {
       hasCachedData = true;
@@ -604,6 +709,7 @@ export function loadUserLocalCache(uid: string): UserLocalCacheData {
       cycleTaxes,
       holidays,
       salaryIncrements,
+      paySlips,
       appliedResetVersion,
       hasCachedData,
     };
@@ -631,6 +737,7 @@ export function clearSessionLocalCacheOnLogout(uid?: string | null): void {
     localStorage.removeItem(keys.taxes);
     localStorage.removeItem(keys.holidays);
     localStorage.removeItem(keys.increments);
+    localStorage.removeItem(keys.paySlips);
     localStorage.removeItem(keys.resetVersion);
     // Keep keys.pendingSync ONLY if there are unsynced offline writes for this UID
     if (!hasPendingSync(uid)) {

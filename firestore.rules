@@ -85,6 +85,47 @@ service cloud.firestore {
         data.salaryAfter is number;
     }
 
+    // Pay slip attachment validation
+    function isValidPaySlip(data, userId) {
+      return data.keys().hasAll(['id', 'userId', 'cycleKey', 'payPeriodLabel', 'imageDataUrl', 'createdAt']) &&
+        data.keys().hasOnly([
+          'id', 'userId', 'cycleKey', 'payPeriodLabel', 'imageDataUrl', 'createdAt',
+          'updatedAt', 'fileName', 'mimeType', 'fileSizeBytes', 'downloadCount', 'lastDownloadedAt',
+          'paymentDate', 'bankName', 'netAmount', 'grossIncome', 'totalDeductions', 'earnings', 'deductions', 'ocrExtracted', 'note'
+        ]) &&
+        data.userId == userId &&
+        data.id is string &&
+        data.id.size() > 0 &&
+        data.id.size() <= 128 &&
+        data.cycleKey is string &&
+        data.cycleKey.size() >= 6 &&
+        data.cycleKey.size() <= 10 &&
+        data.payPeriodLabel is string &&
+        data.payPeriodLabel.size() > 0 &&
+        data.payPeriodLabel.size() <= 120 &&
+        data.imageDataUrl is string &&
+        data.imageDataUrl.size() > 0 &&
+        data.imageDataUrl.size() <= 850000 &&
+        data.createdAt is string &&
+        data.createdAt.size() > 0 &&
+        data.createdAt.size() <= 40 &&
+        (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 40)) &&
+        (!('fileName' in data) || (data.fileName is string && data.fileName.size() <= 150)) &&
+        (!('mimeType' in data) || (data.mimeType is string && data.mimeType.size() <= 50)) &&
+        (!('fileSizeBytes' in data) || (data.fileSizeBytes is number && data.fileSizeBytes >= 0)) &&
+        (!('downloadCount' in data) || (data.downloadCount is number && data.downloadCount >= 0)) &&
+        (!('lastDownloadedAt' in data) || (data.lastDownloadedAt is string && data.lastDownloadedAt.size() <= 40)) &&
+        (!('paymentDate' in data) || (data.paymentDate is string && data.paymentDate.size() <= 10)) &&
+        (!('bankName' in data) || (data.bankName is string && data.bankName.size() <= 80)) &&
+        (!('netAmount' in data) || (data.netAmount is number && data.netAmount >= 0)) &&
+        (!('grossIncome' in data) || (data.grossIncome is number && data.grossIncome >= 0)) &&
+        (!('totalDeductions' in data) || (data.totalDeductions is number && data.totalDeductions >= 0)) &&
+        (!('earnings' in data) || data.earnings is map) &&
+        (!('deductions' in data) || data.deductions is map) &&
+        (!('ocrExtracted' in data) || data.ocrExtracted is bool) &&
+        (!('note' in data) || (data.note is string && data.note.size() <= 500));
+    }
+
     // User document
     match /users/{userId} {
       allow get: if isOwner(userId);
@@ -127,6 +168,15 @@ service cloud.firestore {
         allow create: if isOwner(userId) && isValidId(incrementId) && isValidSalaryIncrement(incoming(), userId);
         allow update: if isOwner(userId) && isValidId(incrementId) && isValidSalaryIncrement(incoming(), userId) && incoming().userId == existing().userId;
         allow delete: if isOwner(userId) && isValidId(incrementId);
+      }
+
+      // User Pay Slips subcollection
+      match /paySlips/{slipId} {
+        allow get: if isOwner(userId);
+        allow list: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidId(slipId) && isValidPaySlip(incoming(), userId);
+        allow update: if isOwner(userId) && isValidId(slipId) && isValidPaySlip(incoming(), userId) && incoming().userId == existing().userId && incoming().createdAt == existing().createdAt;
+        allow delete: if isOwner(userId) && isValidId(slipId);
       }
     }
   }

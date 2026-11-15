@@ -39,6 +39,7 @@
     "src/components/Navbar.tsx",
     "src/components/OTShareCard.tsx",
     "src/components/PaySlipModal.tsx",
+    "src/components/PaySlipVaultView.tsx",
     "src/components/RecordModal.tsx",
     "src/components/SalaryIncrementSection.tsx",
     "src/components/SettingsModal.tsx",
@@ -48,8 +49,10 @@
     "src/components/YearlyLeaveView.tsx",
     "src/data/**/*",
     "src/services/firestoreSync.ts",
+    "src/services/offlineSyncQueue.ts",
     "src/types/**/*",
-    "src/utils/**/*"
+    "src/utils/**/*",
+    "server.ts"
   ],
   "exclude": [
     "dist",

@@ -182,6 +182,10 @@
           "type": "number",
           "description": "Vacation leave quota in days"
         },
+        "yearlyTaxDeductions": {
+          "type": "object",
+          "description": "Annual tax deduction plans keyed by CE year"
+        },
         "updatedAt": {
           "type": "string",
           "description": "ISO timestamp of last update",
@@ -326,6 +330,73 @@
         }
       },
       "required": ["id", "userId", "tenureYear", "effectiveMonth", "salaryAfter"]
+    },
+    "PaySlipAttachment": {
+      "title": "PaySlipAttachment",
+      "description": "Uploaded or captured pay slip photo and cycle month metadata",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Pay slip record unique ID",
+          "maxLength": 128
+        },
+        "userId": {
+          "type": "string",
+          "description": "Owner UID",
+          "maxLength": 128
+        },
+        "cycleKey": {
+          "type": "string",
+          "description": "Cycle identifier (YYYY-MM)",
+          "maxLength": 10,
+          "pattern": "^[0-9]{4}-[0-9]{2}$"
+        },
+        "payPeriodLabel": {
+          "type": "string",
+          "description": "Display label for the slip cycle month",
+          "maxLength": 120
+        },
+        "imageDataUrl": {
+          "type": "string",
+          "description": "Compressed base64 JPEG data URL",
+          "maxLength": 850000
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "ISO timestamp of creation",
+          "maxLength": 40
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "ISO timestamp of last update",
+          "maxLength": 40
+        },
+        "fileName": {
+          "type": "string",
+          "description": "Original image file name",
+          "maxLength": 150
+        },
+        "mimeType": {
+          "type": "string",
+          "description": "Image MIME type",
+          "maxLength": 50
+        },
+        "fileSizeBytes": {
+          "type": "number",
+          "description": "Compressed image byte size"
+        },
+        "downloadCount": {
+          "type": "number",
+          "description": "Number of times PDF was downloaded"
+        },
+        "lastDownloadedAt": {
+          "type": "string",
+          "description": "ISO timestamp of last PDF download",
+          "maxLength": 40
+        }
+      },
+      "required": ["id", "userId", "cycleKey", "payPeriodLabel", "imageDataUrl", "createdAt"]
     }
   },
   "firestore": {
@@ -348,6 +419,10 @@
     "/users/{userId}/salaryIncrements/{incrementId}": {
       "schema": "SalaryIncrement",
       "description": "User salary increment history"
+    },
+    "/users/{userId}/paySlips/{slipId}": {
+      "schema": "PaySlipAttachment",
+      "description": "User uploaded or captured pay slip photos"
     }
   }
 }

@@ -1,14 +1,20 @@
-import React, { useState } from 'react';
-import { PayrollSettings, PayrollSummary } from '../types/overtime';
-import { 
-  X, 
-  Printer, 
-  Copy, 
-  Check, 
-  Building2, 
-  FileText
+import React, { useRef, useState } from 'react';
+import { PaySlipAttachment, PayrollSettings, PayrollSummary } from '../types/overtime';
+import {
+  X,
+  Printer,
+  Copy,
+  Check,
+  Building2,
+  FileText,
+  FileImage,
+  FileDown,
+  Loader2,
+  Upload,
 } from 'lucide-react';
 import { useMoneyVisibility } from '../context/MoneyVisibilityContext';
+import { PayslipPDFGenerator } from '../utils/PayslipPDFGenerator';
+import { compressPaySlipImage } from '../utils/imageCompression';
 
 interface PaySlipModalProps {
   isOpen: boolean;
@@ -16,6 +22,11 @@ interface PaySlipModalProps {
   summary: PayrollSummary;
   settings: PayrollSettings;
   cycleLabel: string;
+  cycleKey?: string;
+  attachedSlip?: PaySlipAttachment | null;
+  onOpenPaySlipVault?: () => void;
+  onNotify?: (message: string) => void;
+  onIncrementDownloadCount?: (slip: PaySlipAttachment) => Promise<void> | void;
 }
 
 export const PaySlipModal: React.FC<PaySlipModalProps> = ({
@@ -24,14 +35,94 @@ export const PaySlipModal: React.FC<PaySlipModalProps> = ({
   summary,
   settings,
   cycleLabel,
+  cycleKey,
+  attachedSlip,
+  onOpenPaySlipVault,
+  onNotify,
+  onIncrementDownloadCount,
 }) => {
   const { formatMoney } = useMoneyVisibility();
   const [copied, setCopied] = useState(false);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const [inlineImageDataUrl, setInlineImageDataUrl] = useState<string>('');
+  const [inlineImageName, setInlineImageName] = useState<string>('');
+  const [pdfError, setPdfError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
 
+  const resolvedCycleKey =
+    cycleKey ||
+    attachedSlip?.cycleKey ||
+    `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+
+  const effectiveSlip: PaySlipAttachment | null = inlineImageDataUrl
+    ? {
+        id: attachedSlip?.id || `temp_${Date.now()}`,
+        cycleKey: resolvedCycleKey,
+        payPeriodLabel: cycleLabel,
+        imageDataUrl: inlineImageDataUrl,
+        fileName: inlineImageName || 'payslip.jpg',
+        mimeType: 'image/jpeg',
+        fileSizeBytes: 0,
+        createdAt: attachedSlip?.createdAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        downloadCount: attachedSlip?.downloadCount || 0,
+      }
+    : attachedSlip || null;
+
   const handlePrint = () => {
     window.print();
+  };
+
+  const handleInlineImageSelect = async (file: File | undefined | null) => {
+    if (!file) return;
+    setPdfError(null);
+    try {
+      const compressed = await compressPaySlipImage(file);
+      setInlineImageDataUrl(compressed.dataUrl);
+      setInlineImageName(file.name || 'payslip.jpg');
+    } catch (err: any) {
+      setPdfError(err?.message || 'ไม่สามารถโหลดภาพสลิปได้');
+    }
+  };
+
+  const handleDownloadPdf = async () => {
+    if (isGeneratingPdf) return;
+    setIsGeneratingPdf(true);
+    setPdfError(null);
+    try {
+      const { fileName } = await PayslipPDFGenerator.generateFromPayrollSummary({
+        summary,
+        settings,
+        cycleKey: resolvedCycleKey,
+        cycleLabel,
+        attachedSlip: effectiveSlip,
+      });
+
+      if (attachedSlip && onIncrementDownloadCount) {
+        const nowIso = new Date().toISOString();
+        await onIncrementDownloadCount({
+          ...attachedSlip,
+          downloadCount: (Number(attachedSlip.downloadCount) || 0) + 1,
+          lastDownloadedAt: nowIso,
+          updatedAt: nowIso,
+        });
+      }
+
+      if (onNotify) {
+        onNotify(`ดาวน์โหลด PDF "${fileName}" สำเร็จ`);
+      }
+    } catch (err: any) {
+      console.error('Failed to generate PDF from PaySlipModal:', err);
+      const msg = err?.message || 'เกิดข้อผิดพลาดในการสร้างไฟล์ PDF';
+      setPdfError(msg);
+      if (onNotify) {
+        onNotify(msg);
+      }
+    } finally {
+      setIsGeneratingPdf(false);
+    }
   };
 
   const handleCopySummary = () => {
@@ -78,8 +169,9 @@ ${summary.diligenceDeduction > 0 ? `  • หักเบี้ยขยัน (
             </button>
           </div>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end">
             <button
+              type="button"
               onClick={handleCopySummary}
               className="flex-1 sm:flex-none justify-center flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 transition-colors"
             >
@@ -88,6 +180,36 @@ ${summary.diligenceDeduction > 0 ? `  • หักเบี้ยขยัน (
             </button>
 
             <button
+              type="button"
+              disabled={isGeneratingPdf}
+              onClick={handleDownloadPdf}
+              title="ดาวน์โหลดรายงานสลิปเงินเดือนเป็นไฟล์ PDF"
+              className="flex-1 sm:flex-none justify-center flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-xs font-bold text-white shadow transition-colors"
+            >
+              {isGeneratingPdf ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <FileDown className="w-3.5 h-3.5" />
+              )}
+              <span>{isGeneratingPdf ? 'กำลังสร้าง PDF...' : 'Download PDF'}</span>
+            </button>
+
+            {onOpenPaySlipVault && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onOpenPaySlipVault();
+                }}
+                className="flex-1 sm:flex-none justify-center flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-xs font-semibold text-white shadow transition-colors"
+              >
+                <FileImage className="w-3.5 h-3.5" />
+                <span>คลังภาพสลิป</span>
+              </button>
+            )}
+
+            <button
+              type="button"
               onClick={handlePrint}
               className="flex-1 sm:flex-none justify-center flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold text-white shadow transition-colors"
             >
@@ -96,6 +218,7 @@ ${summary.diligenceDeduction > 0 ? `  • หักเบี้ยขยัน (
             </button>
 
             <button
+              type="button"
               onClick={onClose}
               className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors ml-1 hidden sm:block"
             >
@@ -103,6 +226,12 @@ ${summary.diligenceDeduction > 0 ? `  • หักเบี้ยขยัน (
             </button>
           </div>
         </div>
+
+        {pdfError && (
+          <div className="px-4 py-2 bg-rose-50 border-b border-rose-200 text-xs text-rose-700 font-medium print:hidden">
+            {pdfError}
+          </div>
+        )}
 
         {/* Slip Document Area (Formal Design) */}
         <div id="printable-payslip" className="p-4 sm:p-8 overflow-y-auto bg-white text-slate-800">
@@ -281,8 +410,64 @@ ${summary.diligenceDeduction > 0 ? `  • หักเบี้ยขยัน (
             </div>
           </div>
 
+          {/* Attached Slip Image Preview & Optional Inline Upload */}
+          <div className="mt-5 pt-4 border-t border-slate-200 space-y-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png"
+              className="hidden"
+              onChange={(e) => {
+                void handleInlineImageSelect(e.target.files?.[0]);
+                e.target.value = '';
+              }}
+            />
+            <div className="flex items-center justify-between gap-2 print:hidden">
+              <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                <FileImage className="w-4 h-4 text-cyan-600" />
+                <span>
+                  {effectiveSlip
+                    ? `ภาพสลิปที่แนบใน PDF: ${effectiveSlip.fileName}`
+                    : 'แนบภาพสลิปเงินเดือนเพื่อรวมในไฟล์ PDF (ถ้ามี)'}
+                </span>
+              </span>
+              <div className="flex items-center gap-2">
+                {inlineImageDataUrl && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setInlineImageDataUrl('');
+                      setInlineImageName('');
+                    }}
+                    className="text-[11px] font-semibold text-rose-600 hover:underline"
+                  >
+                    ล้างภาพชั่วคราว
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold transition-colors"
+                >
+                  <Upload className="w-3 h-3" />
+                  <span>{effectiveSlip ? 'เปลี่ยนภาพสลิป' : 'แนบภาพสลิป'}</span>
+                </button>
+              </div>
+            </div>
+
+            {effectiveSlip?.imageDataUrl && (
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-2.5 flex flex-col items-center">
+                <img
+                  src={effectiveSlip.imageDataUrl}
+                  alt={effectiveSlip.fileName}
+                  className="max-h-56 w-auto object-contain rounded-lg bg-white shadow-xs"
+                />
+              </div>
+            )}
+          </div>
+
           {/* Signature Footer */}
-          <div className="mt-8 pt-6 border-t border-slate-200 grid grid-cols-2 text-center text-xs text-slate-500">
+          <div className="mt-6 pt-6 border-t border-slate-200 grid grid-cols-2 text-center text-xs text-slate-500">
             <div>
               <div className="h-10 border-b border-dashed border-slate-300 w-36 mx-auto mb-1"></div>
               <span>ลงชื่อพนักงานผู้รับเงิน</span>

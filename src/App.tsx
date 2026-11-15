@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { DailyRecord, Holiday, PayrollSettings, AppView, SalaryIncrementRecord } from './types/overtime';
+import { DailyRecord, Holiday, PaySlipAttachment, PayrollSettings, AppView, SalaryIncrementRecord, TaxDeductionConfig } from './types/overtime';
 import { 
   calculatePayroll, 
   createCycleRecords, 
@@ -35,13 +35,16 @@ import {
   subscribeUserCycles,
   subscribeUserHolidays,
   subscribeUserSalaryIncrements,
+  subscribeUserPaySlips,
   saveUserSettings, 
   saveUserCycle, 
   saveUserHolidays, 
   saveBulkHolidays,
   saveUserSalaryIncrements, 
   deleteUserHoliday,
-  deleteUserSalaryIncrement
+  deleteUserSalaryIncrement,
+  saveUserPaySlip,
+  deleteUserPaySlip
 } from './services/firestoreSync';
 import {
   purgeLegacyUnscopedOtKeys,
@@ -54,10 +57,12 @@ import {
   hasPendingSync,
   clearPendingSyncForCycle,
   clearPendingSyncForSettings,
+  clearPendingSyncForPaySlip,
   overlayPendingSyncOnSettings,
   overlayPendingSyncOnCycles,
   overlayPendingSyncOnHolidays,
   overlayPendingSyncOnIncrements,
+  overlayPendingSyncOnPaySlips,
 } from './services/offlineSyncQueue';
 import { copyHolidaysToYear } from './utils/holidayManager';
 import {
@@ -138,6 +143,7 @@ export default function App() {
   const [settings, setSettings] = useState<PayrollSettings>(() => ({ ...DEFAULT_SETTINGS }));
   const [salaryIncrements, setSalaryIncrements] = useState<SalaryIncrementRecord[]>(DEFAULT_SALARY_INCREMENTS);
   const [allCycleRecords, setAllCycleRecords] = useState<Record<string, DailyRecord[]>>({});
+  const [paySlips, setPaySlips] = useState<PaySlipAttachment[]>([]);
 
   const hasWorkStartDate = Boolean(settings.workStartDate && settings.workStartDate.trim() !== '');
 
@@ -268,6 +274,7 @@ export default function App() {
   const cyclesLoadedRef = useRef(false);
   const holidaysLoadedRef = useRef(false);
   const incrementsLoadedRef = useRef(false);
+  const paySlipsLoadedRef = useRef(false);
 
   // Strict session isolation refs to defeat async race conditions across logout / account switching
   const authSessionSeqRef = useRef(0);
@@ -326,6 +333,7 @@ export default function App() {
     cyclesLoadedRef.current = false;
     holidaysLoadedRef.current = false;
     incrementsLoadedRef.current = false;
+    paySlipsLoadedRef.current = false;
 
     isCloudLoadedRef.current = false;
     setIsCloudLoaded(false);
@@ -335,6 +343,7 @@ export default function App() {
     setSalaryIncrements(DEFAULT_SALARY_INCREMENTS);
     setAllCycleRecords({});
     setCycleTaxes({});
+    setPaySlips([]);
 
     setSelectedRecord(null);
     setIsRecordModalOpen(false);
@@ -417,6 +426,7 @@ export default function App() {
       setCycleTaxes(cached.cycleTaxes);
       setHolidays(cached.holidays);
       setSalaryIncrements(cached.salaryIncrements);
+      setPaySlips(cached.paySlips || []);
     }
 
     const flushAndSyncStatus = async () => {
@@ -442,7 +452,8 @@ export default function App() {
         settingsLoadedRef.current &&
         cyclesLoadedRef.current &&
         holidaysLoadedRef.current &&
-        incrementsLoadedRef.current
+        incrementsLoadedRef.current &&
+        paySlipsLoadedRef.current
       ) {
         if (isSessionValid()) {
           isCloudLoadedRef.current = true;
@@ -587,6 +598,25 @@ export default function App() {
       }
     );
 
+    // 6. Pay Slip Attachments Real-time listener
+    const unsubPaySlips = subscribeUserPaySlips(
+      sessionUid,
+      (remoteSlips) => {
+        if (!isSessionValid()) return;
+        paySlipsLoadedRef.current = true;
+        const resolved = overlayPendingSyncOnPaySlips(sessionUid, remoteSlips || []);
+        setPaySlips(resolved);
+        saveUserLocalCache(sessionUid, { paySlips: resolved });
+        checkAllLoaded();
+      },
+      (err) => {
+        console.error('PaySlips listener error:', err);
+        if (!isSessionValid()) return;
+        paySlipsLoadedRef.current = true;
+        checkAllLoaded();
+      }
+    );
+
     const handleOnline = () => {
       if (!isSessionValid()) return;
       void flushAndSyncStatus();
@@ -609,6 +639,7 @@ export default function App() {
       unsubCycles();
       unsubHolidays();
       unsubIncrements();
+      unsubPaySlips();
     };
   }, [user, authLoading, cancelPendingTimersAndCaptureOffline, resetAllUserState, setSyncStatus]);
 
@@ -1001,6 +1032,61 @@ export default function App() {
       }
     } else {
       showToast('อัปเดตตารางสิทธิ์วันลาพักร้อนรายปีสำเร็จ');
+    }
+  };
+
+  // Update year-by-year annual tax deduction plan
+  const handleUpdateYearlyTaxDeductions = async (
+    year: number,
+    config: TaxDeductionConfig,
+    silent = false
+  ) => {
+    const existing = settings.yearlyTaxDeductions || {};
+    const nextSettings: PayrollSettings = {
+      ...settings,
+      yearlyTaxDeductions: {
+        ...existing,
+        [year]: config,
+      },
+    };
+    skipNextSettingsSyncRef.current = true;
+    setSettings(nextSettings);
+
+    if (user && isCloudLoaded) {
+      const sessionUid = user.uid;
+      const sessionSeq = authSessionSeqRef.current;
+      saveUserLocalCache(sessionUid, { settings: nextSettings });
+
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        enqueuePendingSync(sessionUid, 'SAVE_SETTINGS', { settings: nextSettings });
+        setSyncStatus('offline');
+        if (!silent) showToast(`บันทึกแผนลดหย่อนภาษีปี ${year} แบบออฟไลน์แล้ว`);
+        return;
+      }
+
+      setSyncStatus('saving');
+      try {
+        await saveUserSettings(sessionUid, nextSettings);
+        if (authSessionSeqRef.current === sessionSeq && auth.currentUser?.uid === sessionUid) {
+          setSyncStatus('synced');
+          if (!silent) showToast(`บันทึกแผนลดหย่อนภาษีปี ${year} เรียบร้อยแล้ว (ซิงค์คลาวด์แล้ว)`);
+        }
+      } catch (e) {
+        console.error('Failed to save yearly tax deductions to cloud:', e);
+        if (authSessionSeqRef.current !== sessionSeq || auth.currentUser?.uid !== sessionUid) {
+          return;
+        }
+        if (isNetworkOrOfflineError(e)) {
+          enqueuePendingSync(sessionUid, 'SAVE_SETTINGS', { settings: nextSettings });
+          setSyncStatus('offline');
+          if (!silent) showToast(`บันทึกแผนลดหย่อนภาษีปี ${year} แบบออฟไลน์แล้ว`);
+        } else {
+          setSyncStatus('error');
+          showToast('เกิดข้อผิดพลาดในการบันทึกแผนลดหย่อนภาษีบนคลาวด์');
+        }
+      }
+    } else if (!silent) {
+      showToast(`บันทึกแผนลดหย่อนภาษีปี ${year} เรียบร้อยแล้ว`);
     }
   };
 
@@ -1576,15 +1662,113 @@ export default function App() {
     setHolidays([]);
     setSalaryIncrements([]);
     setCycleTaxes({});
+    setPaySlips([]);
     saveUserLocalCache(sessionUid, {
       settings: updatedSettings,
       allCycleRecords: nextCycles,
       holidays: [],
       salaryIncrements: [],
       cycleTaxes: {},
+      paySlips: [],
     });
     setIsResetConfirmModalOpen(false);
     showToast(startDate ? `ล้างข้อมูลทั้งหมดแล้ว เริ่มบันทึกใหม่ตั้งแต่วันที่ ${startDate}` : 'ล้างข้อมูลทั้งหมด (Clean Start) เรียบร้อยแล้ว');
+  };
+
+  // Save / Update Pay Slip Photo Attachment (Online-first + Offline Queue Fallback)
+  const handleSavePaySlip = async (slip: PaySlipAttachment) => {
+    const isUpdate = paySlips.some((s) => s.id === slip.id);
+    const nextSlips = (() => {
+      const filtered = paySlips.filter((s) => s.id !== slip.id);
+      return [slip, ...filtered].sort((a, b) =>
+        (b.createdAt || '').localeCompare(a.createdAt || '')
+      );
+    })();
+    setPaySlips(nextSlips);
+
+    if (user) {
+      const sessionUid = user.uid;
+      const sessionSeq = authSessionSeqRef.current;
+      const enrichedSlip: PaySlipAttachment = { ...slip, userId: sessionUid };
+      saveUserLocalCache(sessionUid, { paySlips: nextSlips });
+
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        enqueuePendingSync(sessionUid, 'SAVE_PAYSLIP', { slip: enrichedSlip });
+        setSyncStatus('offline');
+        if (!isUpdate) showToast('บันทึกสลิปเงินเดือนแบบออฟไลน์แล้ว (รอซิงค์เมื่อออนไลน์)');
+        return;
+      }
+
+      setSyncStatus('saving');
+      try {
+        const writeStartMs = Date.now();
+        await saveUserPaySlip(sessionUid, enrichedSlip);
+        clearPendingSyncForPaySlip(sessionUid, enrichedSlip.id, writeStartMs);
+        if (authSessionSeqRef.current === sessionSeq && auth.currentUser?.uid === sessionUid) {
+          setSyncStatus(hasPendingSync(sessionUid) ? 'offline' : 'synced');
+          if (!isUpdate) showToast('บันทึกภาพสลิปเงินเดือนสำเร็จ (บันทึกบนคลาวด์แล้ว)');
+        }
+      } catch (e) {
+        console.error('Failed to save pay slip to cloud:', e);
+        if (authSessionSeqRef.current !== sessionSeq || auth.currentUser?.uid !== sessionUid) {
+          return;
+        }
+        if (isNetworkOrOfflineError(e)) {
+          enqueuePendingSync(sessionUid, 'SAVE_PAYSLIP', { slip: enrichedSlip });
+          setSyncStatus('offline');
+          if (!isUpdate) showToast('บันทึกสลิปเงินเดือนแบบออฟไลน์แล้ว');
+        } else {
+          setSyncStatus('error');
+          showToast('เกิดข้อผิดพลาดในการบันทึกสลิปบนคลาวด์');
+        }
+      }
+    } else if (!isUpdate) {
+      showToast('บันทึกภาพสลิปเงินเดือนสำเร็จ');
+    }
+  };
+
+  const handleDeletePaySlip = async (slipId: string) => {
+    const nextSlips = paySlips.filter((s) => s.id !== slipId);
+    setPaySlips(nextSlips);
+
+    if (user) {
+      const sessionUid = user.uid;
+      const sessionSeq = authSessionSeqRef.current;
+      saveUserLocalCache(sessionUid, { paySlips: nextSlips });
+
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        enqueuePendingSync(sessionUid, 'DELETE_PAYSLIP', { slipId });
+        setSyncStatus('offline');
+        showToast('ลบสลิปเงินเดือนแบบออฟไลน์แล้ว');
+        return;
+      }
+
+      setSyncStatus('saving');
+      try {
+        const writeStartMs = Date.now();
+        await deleteUserPaySlip(sessionUid, slipId);
+        clearPendingSyncForPaySlip(sessionUid, slipId, writeStartMs);
+        if (authSessionSeqRef.current === sessionSeq && auth.currentUser?.uid === sessionUid) {
+          setSyncStatus(hasPendingSync(sessionUid) ? 'offline' : 'synced');
+          showToast('ลบสลิปเงินเดือนสำเร็จ');
+        }
+      } catch (e) {
+        console.error('Failed to delete pay slip on cloud:', e);
+        if (authSessionSeqRef.current !== sessionSeq || auth.currentUser?.uid !== sessionUid) {
+          return;
+        }
+        if (isNetworkOrOfflineError(e)) {
+          enqueuePendingSync(sessionUid, 'DELETE_PAYSLIP', { slipId });
+          setSyncStatus('offline');
+          showToast('ลบสลิปเงินเดือนแบบออฟไลน์แล้ว');
+        } else {
+          setSyncStatus('error');
+          showToast('เกิดข้อผิดพลาดในการลบสลิปบนคลาวด์');
+        }
+      }
+    } else {
+      showToast('ลบสลิปเงินเดือนสำเร็จ');
+    }
   };
 
   // Export CSV
@@ -1685,6 +1869,14 @@ export default function App() {
         onOpenRecordModal={handleQuickAdd}
         onOpenSettingsModal={() => (user ? setIsSettingsModalOpen(true) : requireLoginNotice())}
         onOpenPaySlipModal={() => (user ? setIsPaySlipModalOpen(true) : requireLoginNotice())}
+        onOpenPaySlipVault={() => {
+          if (!user) {
+            requireLoginNotice();
+            return;
+          }
+          setOverallNavTarget({ module: 'payslip_vault', nonce: Date.now() });
+          setCurrentView('dashboard');
+        }}
         onOpenBrandEditModal={() => (user ? setIsBrandEditModalOpen(true) : requireLoginNotice())}
         onExportCsv={() => (user ? handleExportCsv() : requireLoginNotice())}
         onResetData={handleResetData}
@@ -1962,6 +2154,13 @@ export default function App() {
                   onDeleteHoliday={handleDeleteHoliday}
                   onApplyHolidaysToCurrentCycle={handleApplyHolidaysToCurrentCycle}
                   onCopyHolidaysFromYear={handleCopyHolidaysFromYear}
+                  paySlips={paySlips}
+                  currentCycleKey={cycleKey}
+                  currentCycleNetIncome={summary.netIncome}
+                  onSavePaySlip={handleSavePaySlip}
+                  onDeletePaySlip={handleDeletePaySlip}
+                  onUpdateYearlyTaxDeductions={handleUpdateYearlyTaxDeductions}
+                  onNotify={showToast}
                   onNavigateToCycle={(navYear, navMonth) => {
                     const baseYear = 2026;
                     const baseMonth = 9;
@@ -2095,6 +2294,14 @@ export default function App() {
           summary={summary}
           settings={currentCycleSettings}
           cycleLabel={cycleLabel}
+          cycleKey={cycleKey}
+          attachedSlip={paySlips.find((s) => s.cycleKey === cycleKey) || null}
+          onNotify={showToast}
+          onIncrementDownloadCount={handleSavePaySlip}
+          onOpenPaySlipVault={() => {
+            setOverallNavTarget({ module: 'payslip_vault', nonce: Date.now() });
+            setCurrentView('dashboard');
+          }}
         />
       )}
 

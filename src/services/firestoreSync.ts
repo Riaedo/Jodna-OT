@@ -10,7 +10,7 @@ import {
   Unsubscribe
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType, User } from '../firebase';
-import { DailyRecord, Holiday, PayrollSettings, SalaryIncrementRecord } from '../types/overtime';
+import { DailyRecord, Holiday, PayrollSettings, SalaryIncrementRecord, PaySlipAttachment } from '../types/overtime';
 
 // Clear legacy unscoped keys and optionally all local data (including queue) for a specific UID
 export function clearOtAppLocalStorage(userId?: string): void {
@@ -111,6 +111,16 @@ export async function cleanStartUserCloudData(userId: string): Promise<string> {
     }
   } catch (e) {
     console.warn('Error clearing salary increments:', e);
+  }
+
+  // 4b. Delete all pay slips
+  try {
+    const paySlipsDocs = await getDocs(collection(db, 'users', userId, 'paySlips'));
+    for (const d of paySlipsDocs.docs) {
+      await deleteDoc(doc(db, 'users', userId, 'paySlips', d.id));
+    }
+  } catch (e) {
+    console.warn('Error clearing pay slips:', e);
   }
 
   // 5. Update user profile with cleanResetVersion
@@ -342,6 +352,36 @@ export async function saveUserSettings(userId: string, settings: PayrollSettings
       cleanPayload.yearlyVacationQuotas = settings.yearlyVacationQuotas;
     }
 
+    if (settings.yearlyTaxDeductions) {
+      const sanitizedTaxMap: Record<number, any> = {};
+      Object.entries(settings.yearlyTaxDeductions).forEach(([yrKey, cfg]) => {
+        if (!cfg || typeof cfg !== 'object') return;
+        const cleanStimulus = Array.isArray(cfg.customStimulusItems)
+          ? cfg.customStimulusItems.map((item, idx) => {
+              const entry: Record<string, any> = {
+                id: String(item?.id || `stim-${idx + 1}`),
+                name: String(item?.name || ''),
+                amount: Number(item?.amount) || 0,
+                enabled: item?.enabled !== false,
+              };
+              if (item?.maxLimit !== undefined && item?.maxLimit !== null && Number(item.maxLimit) > 0) {
+                entry.maxLimit = Number(item.maxLimit);
+              }
+              return entry;
+            })
+          : [];
+        sanitizedTaxMap[Number(yrKey)] = {
+          ...cfg,
+          disabledCareCount: Number(cfg.disabledCareCount) || 0,
+          prenatalAndChildbirthExpense: Number(cfg.prenatalAndChildbirthExpense) || 0,
+          pensionInsurance: Number(cfg.pensionInsurance) || 0,
+          easyEReceipt: Number(cfg.easyEReceipt) || 0,
+          customStimulusItems: cleanStimulus,
+        };
+      });
+      cleanPayload.yearlyTaxDeductions = sanitizedTaxMap;
+    }
+
     await setDoc(docRef, cleanPayload, { merge: true });
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
@@ -568,6 +608,107 @@ export async function fetchUserSalaryIncrements(userId: string): Promise<SalaryI
       increments.push(docSnap.data() as SalaryIncrementRecord);
     });
     return increments;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, path);
+    return [];
+  }
+}
+
+// Real-time listener: Pay Slip Attachments
+export function subscribeUserPaySlips(
+  userId: string,
+  onUpdate: (paySlips: PaySlipAttachment[]) => void,
+  onError?: (err: any) => void
+): Unsubscribe {
+  const path = `users/${userId}/paySlips`;
+  const colRef = collection(db, 'users', userId, 'paySlips');
+
+  return onSnapshot(
+    colRef,
+    (snapshot) => {
+      const slips: PaySlipAttachment[] = [];
+      snapshot.docs.forEach((docSnap) => {
+        slips.push(docSnap.data() as PaySlipAttachment);
+      });
+      slips.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+      onUpdate(slips);
+    },
+    (error) => {
+      try {
+        handleFirestoreError(error, OperationType.LIST, path);
+      } catch (formattedErr) {
+        if (onError) onError(formattedErr);
+      }
+    }
+  );
+}
+
+// Save single Pay Slip Attachment to Firestore
+export async function saveUserPaySlip(userId: string, slip: PaySlipAttachment): Promise<void> {
+  const path = `users/${userId}/paySlips/${slip.id}`;
+  try {
+    const docRef = doc(db, 'users', userId, 'paySlips', slip.id);
+    const nowIso = new Date().toISOString();
+    const cycleKey = String(slip.cycleKey || '').trim().slice(0, 10);
+    const payPeriodLabel = String(slip.payPeriodLabel || cycleKey).trim().slice(0, 120);
+
+    const cleanPayload: Record<string, any> = {
+      id: String(slip.id).slice(0, 128),
+      userId,
+      cycleKey,
+      payPeriodLabel,
+      imageDataUrl: String(slip.imageDataUrl || ''),
+      createdAt: String(slip.createdAt || nowIso).slice(0, 40),
+    };
+
+    if (slip.updatedAt && String(slip.updatedAt).trim() !== '') {
+      cleanPayload.updatedAt = String(slip.updatedAt).trim().slice(0, 40);
+    }
+    if (slip.fileName && String(slip.fileName).trim() !== '') {
+      cleanPayload.fileName = String(slip.fileName).trim().slice(0, 150);
+    }
+    if (slip.mimeType && String(slip.mimeType).trim() !== '') {
+      cleanPayload.mimeType = String(slip.mimeType).trim().slice(0, 50);
+    }
+    if (typeof slip.fileSizeBytes === 'number' && Number.isFinite(slip.fileSizeBytes)) {
+      cleanPayload.fileSizeBytes = Math.max(0, Math.floor(slip.fileSizeBytes));
+    }
+    if (typeof slip.downloadCount === 'number' && Number.isFinite(slip.downloadCount)) {
+      cleanPayload.downloadCount = Math.max(0, Math.floor(slip.downloadCount));
+    }
+    if (slip.lastDownloadedAt && String(slip.lastDownloadedAt).trim() !== '') {
+      cleanPayload.lastDownloadedAt = String(slip.lastDownloadedAt).trim().slice(0, 40);
+    }
+
+    await setDoc(docRef, cleanPayload, { merge: true });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+// Delete Pay Slip Attachment
+export async function deleteUserPaySlip(userId: string, slipId: string): Promise<void> {
+  const path = `users/${userId}/paySlips/${slipId}`;
+  try {
+    const docRef = doc(db, 'users', userId, 'paySlips', slipId);
+    await deleteDoc(docRef);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+  }
+}
+
+// Fetch Pay Slips (One-time backup)
+export async function fetchUserPaySlips(userId: string): Promise<PaySlipAttachment[]> {
+  const path = `users/${userId}/paySlips`;
+  try {
+    const colRef = collection(db, 'users', userId, 'paySlips');
+    const snapshot = await getDocs(colRef);
+    const slips: PaySlipAttachment[] = [];
+    snapshot.docs.forEach((docSnap) => {
+      slips.push(docSnap.data() as PaySlipAttachment);
+    });
+    slips.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+    return slips;
   } catch (error) {
     handleFirestoreError(error, OperationType.LIST, path);
     return [];

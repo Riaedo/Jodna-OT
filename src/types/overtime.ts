@@ -45,6 +45,39 @@ export interface ShiftAllowanceRule {
   allowance: number;
 }
 
+export interface CustomTaxStimulusItem {
+  id: string;
+  name: string;
+  amount: number;
+  maxLimit?: number;
+  enabled: boolean;
+}
+
+export interface TaxDeductionConfig {
+  otherIncomeBonus: number; // โบนัส / รายได้พิเศษอื่นทั้งปี
+  personalDeduction?: number; // ค่าลดหย่อนส่วนตัว 60,000 บาท
+  hasSpouse: boolean; // คู่สมรสไม่มีรายได้ (0 หรือ 60,000)
+  childCountBefore2018: number; // บุตรคนแรก / เกิดก่อนปี 2561 (คนละ 30,000)
+  childCountFrom2018: number; // บุตรคนที่ 2+ เกิดตั้งแต่ปี 2561 (คนละ 60,000)
+  parentsCareCount: number; // อุปการะบิดามารดา 0-4 คน (คนละ 30,000)
+  disabledCareCount: number; // อุปการะผู้พิการหรือผู้ทุพพลภาพ (คนละ 60,000)
+  prenatalAndChildbirthExpense: number; // ค่าฝากครรภ์และคลอดบุตร (ตามจริงสูงสุด 60,000)
+  socialSecurityOverride?: number | null; // null = ดึงจากแอปอัตโนมัติ
+  providentFundOverride?: number | null; // null = ดึงจากแอปอัตโนมัติ
+  lifeInsurance: number; // ประกันชีวิตทั่วไป (สูงสุด 100,000)
+  healthInsuranceSelf: number; // ประกันสุขภาพตนเอง (สูงสุด 25,000)
+  healthInsuranceParents: number; // ประกันสุขภาพบิดามารดา (สูงสุด 15,000)
+  pensionInsurance: number; // เบี้ยประกันชีวิตแบบบำนาญ (สูงสุด 15% ไม่เกิน 200,000 รวมตะกร้าเกษียณ 500,000)
+  rmfAmount: number; // กองทุน RMF
+  ssfAmount: number; // กองทุน SSF
+  thaiEsgAmount: number; // กองทุน Thai ESG
+  homeLoanInterest: number; // ดอกเบี้ยที่อยู่อาศัย (สูงสุด 100,000)
+  easyEReceipt?: number; // Legacy Easy E-Receipt / ช้อปดีมีคืน (คงไว้เพื่อ backward compatibility)
+  customStimulusItems?: CustomTaxStimulusItem[]; // โครงการกระตุ้นเศรษฐกิจแบบปรับเพิ่ม/ลบอิสระตามปีภาษี
+  donation2xEducation: number; // เงินบริจาคการศึกษา/กีฬา/รพ.รัฐ (ลดหย่อน 2 เท่า)
+  donationGeneral: number; // เงินบริจาคทั่วไป (ตามจริง 1 เท่า)
+}
+
 export interface PayrollSettings {
   appName?: string; // ชื่อระบบ/บริษัท (กำหนดให้แก้ไขได้)
   appIcon?: string; // รูปไอคอน (กำหนดให้แก้ไขได้)
@@ -86,6 +119,7 @@ export interface PayrollSettings {
   leavePersonalQuota: number; // โควต้าลากิจ (วัน)
   leaveVacationQuota: number; // โควต้าลาพักร้อนพื้นฐาน (วัน)
   yearlyVacationQuotas?: Record<number, { baseQuota: number; carriedOver?: number; note?: string }>; // สิทธิ์วันลาพักร้อนประจำรอบปี แบบปีต่อปี
+  yearlyTaxDeductions?: Record<number, TaxDeductionConfig>; // แผนลดหย่อนภาษีประจำปี ค.ศ.
 
   // Attendance-based allowances
   diligenceRules: DiligenceRule[];
@@ -168,4 +202,19 @@ export interface SalaryIncrementRecord {
   providentFundDeduction: number; // กองทุนที่หัก เช่น 683 (2%)
   note?: string; // หมายเหตุ เช่น "เริ่มต้นเข้าทำงาน", "ปรับประจำปี"
   effectiveYear?: number; // ปี ค.ศ. หรือ พ.ศ.
+}
+
+export interface PaySlipAttachment {
+  id: string;
+  userId?: string;
+  cycleKey: string; // e.g. '2026-11'
+  payPeriodLabel: string; // e.g. 'รอบเดือน พฤศจิกายน 2026'
+  imageDataUrl: string; // Compressed JPEG data URL
+  createdAt: string;
+  updatedAt?: string;
+  fileName?: string;
+  mimeType?: string;
+  fileSizeBytes?: number;
+  downloadCount?: number;
+  lastDownloadedAt?: string;
 }

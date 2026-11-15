@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { DailyRecord, Holiday, PayrollSettings, PayrollSummary, SalaryIncrementRecord } from '../types/overtime';
+import { DailyRecord, Holiday, PaySlipAttachment, PayrollSettings, PayrollSummary, SalaryIncrementRecord, TaxDeductionConfig } from '../types/overtime';
 import { 
   calculatePayroll, 
   createCycleRecords, 
@@ -24,14 +24,19 @@ import {
   FileSpreadsheet, 
   CheckCircle2,
   ArrowLeft,
-  ArrowRight
+  ArrowRight,
+  FileImage,
+  Calculator
 } from 'lucide-react';
 import { SalaryIncrementSection } from './SalaryIncrementSection';
 import { YearlyLeaveView } from './YearlyLeaveView';
 import { HolidayCalendar } from './HolidayCalendar';
+import { PaySlipVaultView } from './PaySlipVaultView';
+import { TaxCalculatorView } from './TaxCalculatorView';
+import { calculateAnnualTaxPlan } from '../utils/taxCalculator';
 import { useMoneyVisibility } from '../context/MoneyVisibilityContext';
 
-export type OverallModule = 'hub' | 'annual_records' | 'salary_increment' | 'yearly_leave' | 'holidays';
+export type OverallModule = 'hub' | 'annual_records' | 'salary_increment' | 'yearly_leave' | 'holidays' | 'payslip_vault' | 'tax_calculator';
 
 interface YearlyDashboardProps {
   allCycleRecords: Record<string, DailyRecord[]>;
@@ -52,6 +57,13 @@ interface YearlyDashboardProps {
   onDeleteHoliday: (id: string) => void;
   onApplyHolidaysToCurrentCycle: () => void;
   onCopyHolidaysFromYear?: (sourceYear: number, targetYear: number) => Promise<void> | void;
+  paySlips?: PaySlipAttachment[];
+  currentCycleKey?: string;
+  currentCycleNetIncome?: number;
+  onSavePaySlip?: (slip: PaySlipAttachment) => Promise<void> | void;
+  onDeletePaySlip?: (slipId: string) => Promise<void> | void;
+  onUpdateYearlyTaxDeductions?: (year: number, config: TaxDeductionConfig, silent?: boolean) => Promise<void> | void;
+  onNotify?: (message: string) => void;
 }
 
 interface MonthlyCycleSummary {
@@ -106,6 +118,13 @@ export const YearlyDashboard: React.FC<YearlyDashboardProps> = ({
   onDeleteHoliday,
   onApplyHolidaysToCurrentCycle,
   onCopyHolidaysFromYear,
+  paySlips = [],
+  currentCycleKey = '2026-10',
+  currentCycleNetIncome = 0,
+  onSavePaySlip,
+  onDeletePaySlip,
+  onUpdateYearlyTaxDeductions,
+  onNotify,
 }) => {
   const { isMoneyHidden, formatMoney } = useMoneyVisibility();
   const hasWorkStartDate = Boolean(settings.workStartDate && settings.workStartDate.trim() !== '');
@@ -290,6 +309,20 @@ export const YearlyDashboard: React.FC<YearlyDashboardProps> = ({
     }
   }, [yearlySummaries, selectedYearFilter]);
 
+  // Live summary for Card 6 (Annual Tax & Deductions Planner) on Hub
+  const taxPreviewYear = latestCycle.year || new Date().getFullYear();
+  const hubTaxSummary = useMemo(() => {
+    const yearConfig = settings.yearlyTaxDeductions?.[taxPreviewYear];
+    return calculateAnnualTaxPlan({
+      year: taxPreviewYear,
+      allCycleRecords,
+      cycleTaxes,
+      settings,
+      salaryIncrements: salaryIncrements || [],
+      configOverride: yearConfig,
+    });
+  }, [taxPreviewYear, allCycleRecords, cycleTaxes, settings, salaryIncrements]);
+
   // Export annual table to CSV
   const handleExportYearlyCsv = () => {
     const headers = [
@@ -460,6 +493,80 @@ export const YearlyDashboard: React.FC<YearlyDashboardProps> = ({
               </p>
             </div>
           </button>
+
+          {/* Card 5: PaySlip Photo Vault & PDF Report */}
+          <button
+            type="button"
+            onClick={() => setActiveModule('payslip_vault')}
+            className="w-full bg-slate-900/90 border border-slate-800 hover:border-cyan-500/60 shadow-lg hover:shadow-cyan-500/10 rounded-2xl p-5 sm:p-6 text-left transition-all duration-200 hover:-translate-y-0.5 flex items-start gap-4 group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
+          >
+            <div className="shrink-0 p-3 sm:p-3.5 rounded-xl bg-cyan-500/20 border border-cyan-500/40 text-cyan-400 group-hover:bg-cyan-500 group-hover:text-white transition-colors">
+              <FileImage className="w-6 h-6" />
+            </div>
+
+            <div className="flex-1 min-w-0">
+              <div className="flex items-start justify-between gap-2">
+                <h3 className="text-sm sm:text-base font-bold text-white leading-snug">
+                  5. บันทึกภาพถ่ายสลิปเงินเดือน &amp; PDF{' '}
+                  <span className="text-cyan-400 font-semibold">(PaySlip Photo Vault &amp; PDF)</span>
+                </h3>
+                <ArrowRight className="w-4 h-4 text-slate-500 group-hover:text-cyan-400 group-hover:translate-x-0.5 transition-all shrink-0 mt-1" />
+              </div>
+              <p className="text-xs sm:text-sm text-slate-300 mt-1.5 leading-relaxed">
+                ถ่ายภาพหรืออัปโหลดสลิปเงินเดือนแยกตามรอบเดือน เปิดดูย้อนหลังและดาวน์โหลดเป็นไฟล์ PDF ขนาด A4
+              </p>
+              <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                <span className="inline-block text-[10px] sm:text-[11px] font-bold px-2.5 py-0.5 rounded-md bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">
+                  บันทึกแล้ว {paySlips.length} ใบ
+                </span>
+                <span className="inline-block text-[10px] sm:text-[11px] font-bold px-2.5 py-0.5 rounded-md bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
+                  รองรับกล้องมือถือ &amp; ส่งออก PDF
+                </span>
+              </div>
+            </div>
+          </button>
+
+          {/* Card 6: Annual Tax & Deductions Calculator */}
+          <button
+            type="button"
+            onClick={() => setActiveModule('tax_calculator')}
+            className="w-full bg-slate-900/90 border border-slate-800 hover:border-rose-500/60 shadow-lg hover:shadow-rose-500/10 rounded-2xl p-5 sm:p-6 text-left transition-all duration-200 hover:-translate-y-0.5 flex items-start gap-4 group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400"
+          >
+            <div className="shrink-0 p-3 sm:p-3.5 rounded-xl bg-rose-500/20 border border-rose-500/40 text-rose-400 group-hover:bg-rose-500 group-hover:text-white transition-colors">
+              <Calculator className="w-6 h-6" />
+            </div>
+
+            <div className="flex-1 min-w-0">
+              <div className="flex items-start justify-between gap-2">
+                <h3 className="text-sm sm:text-base font-bold text-white leading-snug">
+                  6. คำนวณภาษีและค่าลดหย่อนประจำปี{' '}
+                  <span className="text-rose-400 font-semibold">(Tax &amp; Deductions Planner)</span>
+                </h3>
+                <ArrowRight className="w-4 h-4 text-slate-500 group-hover:text-rose-400 group-hover:translate-x-0.5 transition-all shrink-0 mt-1" />
+              </div>
+              <p className="text-xs sm:text-sm text-slate-300 mt-1.5 leading-relaxed">
+                คำนวณภาษีเงินได้บุคคลธรรมดาแบบขั้นบันได 0-35% พร้อมวางแผนค่าลดหย่อนอัตโนมัติจากรายได้ 12 เดือน
+              </p>
+              <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                <span className="inline-block text-[10px] sm:text-[11px] font-bold px-2.5 py-0.5 rounded-md bg-slate-800 text-slate-200 border border-slate-700 tabular-nums">
+                  หัก ณ ที่จ่ายปี {taxPreviewYear}: {formatMoney(hubTaxSummary.totalWithholdingTaxPaid)}
+                </span>
+                {hubTaxSummary.settlementStatus === 'REFUND' ? (
+                  <span className="inline-block text-[10px] sm:text-[11px] font-bold px-2.5 py-0.5 rounded-md bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 tabular-nums">
+                    มีสิทธิขอคืนภาษี +{formatMoney(Math.abs(hubTaxSummary.settlementDiff))}
+                  </span>
+                ) : hubTaxSummary.settlementStatus === 'PAYABLE' ? (
+                  <span className="inline-block text-[10px] sm:text-[11px] font-bold px-2.5 py-0.5 rounded-md bg-rose-500/15 text-rose-300 border border-rose-500/30 tabular-nums">
+                    ต้องจ่ายเพิ่ม {formatMoney(Math.abs(hubTaxSummary.settlementDiff))}
+                  </span>
+                ) : (
+                  <span className="inline-block text-[10px] sm:text-[11px] font-bold px-2.5 py-0.5 rounded-md bg-sky-500/15 text-sky-300 border border-sky-500/30">
+                    พอดี / ไม่ต้องเสียภาษีเพิ่ม
+                  </span>
+                )}
+              </div>
+            </div>
+          </button>
         </div>
       ) : (
         <>
@@ -526,6 +633,32 @@ export const YearlyDashboard: React.FC<YearlyDashboardProps> = ({
               >
                 <CalendarCheck className="w-3.5 h-3.5" />
                 <span>วันหยุดประจำปี</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveModule('payslip_vault')}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold transition-colors whitespace-nowrap shrink-0 ${
+                  activeModule === 'payslip_vault'
+                    ? 'bg-cyan-600 text-white shadow-sm'
+                    : 'bg-slate-100 hover:bg-cyan-50 dark:bg-slate-800 dark:hover:bg-cyan-950/60 text-slate-600 dark:text-slate-300 hover:text-cyan-600 dark:hover:text-cyan-300'
+                }`}
+              >
+                <FileImage className="w-3.5 h-3.5" />
+                <span>ภาพสลิป &amp; PDF</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveModule('tax_calculator')}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold transition-colors whitespace-nowrap shrink-0 ${
+                  activeModule === 'tax_calculator'
+                    ? 'bg-rose-600 text-white shadow-sm'
+                    : 'bg-slate-100 hover:bg-rose-50 dark:bg-slate-800 dark:hover:bg-rose-950/60 text-slate-600 dark:text-slate-300 hover:text-rose-600 dark:hover:text-rose-300'
+                }`}
+              >
+                <Calculator className="w-3.5 h-3.5" />
+                <span>คำนวณภาษีประจำปี</span>
               </button>
             </div>
           </div>
@@ -1265,6 +1398,30 @@ export const YearlyDashboard: React.FC<YearlyDashboardProps> = ({
               onDeleteHoliday={onDeleteHoliday}
               onApplyToCurrentCycle={onApplyHolidaysToCurrentCycle}
               onCopyHolidaysFromYear={onCopyHolidaysFromYear}
+            />
+          )}
+
+          {activeModule === 'payslip_vault' && (
+            <PaySlipVaultView
+              paySlips={paySlips}
+              settings={settings}
+              currentCycleKey={currentCycleKey}
+              currentCycleNetIncome={currentCycleNetIncome}
+              onSavePaySlip={(slip) => (onSavePaySlip ? onSavePaySlip(slip) : undefined)}
+              onDeletePaySlip={(slipId) => (onDeletePaySlip ? onDeletePaySlip(slipId) : undefined)}
+              onNotify={onNotify}
+            />
+          )}
+
+          {activeModule === 'tax_calculator' && (
+            <TaxCalculatorView
+              allCycleRecords={allCycleRecords}
+              cycleTaxes={cycleTaxes}
+              settings={settings}
+              salaryIncrements={salaryIncrements}
+              onUpdateCycleTax={onUpdateCycleTax}
+              onUpdateYearlyTaxDeductions={onUpdateYearlyTaxDeductions}
+              onNotify={onNotify}
             />
           )}
         </>
