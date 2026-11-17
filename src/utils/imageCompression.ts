@@ -23,7 +23,7 @@ export function estimateDataUrlByteSize(dataUrl: string): number {
   return Math.ceil((base64.length * 3) / 4);
 }
 
-function readFileAsDataUrl(file: File): Promise<string> {
+export function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {

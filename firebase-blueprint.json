@@ -394,6 +394,22 @@
           "type": "string",
           "description": "ISO timestamp of last PDF download",
           "maxLength": 40
+        },
+        "baseSalary": {
+          "type": "number",
+          "description": "Extracted or entered base salary (ACT_BASE_SALARY)"
+        },
+        "netIncome": {
+          "type": "number",
+          "description": "Extracted or entered net income (ACT_INCOME)"
+        },
+        "incomeTax": {
+          "type": "number",
+          "description": "Extracted or entered income tax deduction (INCOME_TAX)"
+        },
+        "socialSecurity": {
+          "type": "number",
+          "description": "Extracted or entered social security deduction (INSU_DEDU)"
         }
       },
       "required": ["id", "userId", "cycleKey", "payPeriodLabel", "imageDataUrl", "createdAt"]

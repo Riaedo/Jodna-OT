@@ -44,7 +44,8 @@ interface YearlyDashboardProps {
   settings: PayrollSettings;
   salaryIncrements?: SalaryIncrementRecord[];
   onUpdateSalaryIncrements?: (records: SalaryIncrementRecord[]) => void;
-  onUpdateCycleTax?: (cycleKey: string, tax: number) => void;
+  onUpdateCycleTax?: (cycleKey: string, tax: number, silent?: boolean) => Promise<void> | void;
+  onBatchUpdateCycleTaxes?: (updates: Record<string, number>, options?: { silent?: boolean }) => Promise<void> | void;
   onNavigateToCycle?: (year: number, month: number) => void;
   onUpdateBaseSalary?: (newSalary: number) => void;
   resetToHubSignal?: number;
@@ -106,6 +107,7 @@ export const YearlyDashboard: React.FC<YearlyDashboardProps> = ({
   salaryIncrements,
   onUpdateSalaryIncrements,
   onUpdateCycleTax,
+  onBatchUpdateCycleTaxes,
   onNavigateToCycle,
   onUpdateBaseSalary,
   resetToHubSignal,
@@ -1404,11 +1406,15 @@ export const YearlyDashboard: React.FC<YearlyDashboardProps> = ({
           {activeModule === 'payslip_vault' && (
             <PaySlipVaultView
               paySlips={paySlips}
+              allCycleRecords={allCycleRecords}
+              salaryIncrements={salaryIncrements}
+              cycleTaxes={cycleTaxes}
               settings={settings}
               currentCycleKey={currentCycleKey}
               currentCycleNetIncome={currentCycleNetIncome}
               onSavePaySlip={(slip) => (onSavePaySlip ? onSavePaySlip(slip) : undefined)}
               onDeletePaySlip={(slipId) => (onDeletePaySlip ? onDeletePaySlip(slipId) : undefined)}
+              onUpdateCycleTax={onUpdateCycleTax}
               onNotify={onNotify}
             />
           )}
@@ -1417,9 +1423,11 @@ export const YearlyDashboard: React.FC<YearlyDashboardProps> = ({
             <TaxCalculatorView
               allCycleRecords={allCycleRecords}
               cycleTaxes={cycleTaxes}
+              paySlips={paySlips}
               settings={settings}
               salaryIncrements={salaryIncrements}
               onUpdateCycleTax={onUpdateCycleTax}
+              onBatchUpdateCycleTaxes={onBatchUpdateCycleTaxes}
               onUpdateYearlyTaxDeductions={onUpdateYearlyTaxDeductions}
               onNotify={onNotify}
             />

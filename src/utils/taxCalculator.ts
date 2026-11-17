@@ -1,6 +1,7 @@
 import {
   CustomTaxStimulusItem,
   DailyRecord,
+  PaySlipAttachment,
   PayrollSettings,
   SalaryIncrementRecord,
   TaxDeductionConfig,
@@ -197,6 +198,7 @@ export interface AnnualTaxCalculationResult {
   expenseDeduction: number;
 
   // Auto-pulled annual deductions from 12 cycles
+  ssoAnnualCap: number;
   autoSocialSecurity: number;
   autoProvidentFund: number;
 
@@ -264,6 +266,10 @@ const THAI_TAX_BRACKETS: Array<{
   { id: 'b30', label: '2,000,001 - 5,000,000 บาท', minIncome: 2000000, maxIncome: 5000000, ratePercent: 30 },
   { id: 'b35', label: '5,000,001 บาทขึ้นไป', minIncome: 5000000, maxIncome: null, ratePercent: 35 },
 ];
+
+export function getAnnualSocialSecurityCap(year: number): number {
+  return year >= 2026 ? 10500 : 9000;
+}
 
 export function calculateProgressiveThaiTax(netTaxableIncome: number): {
   totalTax: number;
@@ -431,8 +437,9 @@ export function calculateAnnualTaxPlan(params: {
   const expenseDeduction = round2(Math.min(totalAnnualGrossIncome * 0.5, 100000));
 
   // Auto-sum SSO & PVD from 12 cycles
+  const ssoAnnualCap = getAnnualSocialSecurityCap(year);
   const rawAutoSso = round2(monthlyRows.reduce((sum, r) => sum + r.socialSecurity, 0));
-  const autoSocialSecurity = round2(Math.min(rawAutoSso, 9000));
+  const autoSocialSecurity = round2(Math.min(rawAutoSso, ssoAnnualCap));
   const autoProvidentFund = round2(monthlyRows.reduce((sum, r) => sum + r.providentFund, 0));
 
   // Group 1: Personal & Family
@@ -458,7 +465,7 @@ export function calculateAnnualTaxPlan(params: {
     cfg.socialSecurityOverride !== null && cfg.socialSecurityOverride !== undefined
       ? cfg.socialSecurityOverride
       : autoSocialSecurity;
-  const effectiveSocialSecurity = round2(Math.min(Math.max(0, rawSsoInput), 9000));
+  const effectiveSocialSecurity = round2(Math.min(Math.max(0, rawSsoInput), ssoAnnualCap));
 
   const rawPvdInput =
     cfg.providentFundOverride !== null && cfg.providentFundOverride !== undefined
@@ -608,6 +615,7 @@ export function calculateAnnualTaxPlan(params: {
     otherIncomeBonus,
     totalAnnualGrossIncome,
     expenseDeduction,
+    ssoAnnualCap,
     autoSocialSecurity,
     autoProvidentFund,
     personalDeduction,
@@ -651,3 +659,93 @@ export function calculateAnnualTaxPlan(params: {
     settlementAmountAbs: round2(Math.abs(settlementDiff)),
   };
 }
+
+export interface PaySlipAnnualSyncSummary {
+  year: number;
+  rawSlipCount: number;
+  uniqueCycleCount: number;
+  cycleTaxUpdates: Record<string, number>;
+  slipsWithTaxCount: number;
+  totalTaxFromSlips: number;
+  slipsWithSsoCount: number;
+  totalSocialSecurityFromSlips: number;
+  ssoAnnualCap: number;
+  cappedSocialSecurityFromSlips: number;
+}
+
+/**
+ * Aggregates pay slips for a given tax year (picking the latest slip per cycleKey)
+ * to extract monthly withholding tax (`incomeTax`) and annual social security (`socialSecurity`).
+ */
+export function aggregateYearPaySlipsForTaxSync(
+  paySlips: PaySlipAttachment[],
+  year: number
+): PaySlipAnnualSyncSummary {
+  const yearPrefix = `${year}-`;
+  const matching = paySlips.filter((s) => {
+    const ck = (s.cycleKey || '').trim();
+    if (!ck.startsWith(yearPrefix)) return false;
+    const m = Number(ck.slice(5, 7));
+    return /^\d{4}-\d{2}$/.test(ck) && m >= 1 && m <= 12;
+  });
+
+  // Sort newest first by updatedAt/createdAt so latest uploaded/edited slip wins per month
+  const sortedNewestFirst = [...matching].sort((a, b) => {
+    const bTime = b.updatedAt || b.createdAt || '';
+    const aTime = a.updatedAt || a.createdAt || '';
+    return bTime.localeCompare(aTime);
+  });
+
+  const latestByCycle = new Map<string, PaySlipAttachment>();
+  for (const slip of sortedNewestFirst) {
+    const ck = slip.cycleKey.trim();
+    if (!latestByCycle.has(ck)) {
+      latestByCycle.set(ck, slip);
+    }
+  }
+
+  const cycleTaxUpdates: Record<string, number> = {};
+  let slipsWithTaxCount = 0;
+  let totalTaxFromSlips = 0;
+  let slipsWithSsoCount = 0;
+  let totalSocialSecurityFromSlips = 0;
+
+  for (const [ck, slip] of latestByCycle.entries()) {
+    if (
+      typeof slip.incomeTax === 'number' &&
+      Number.isFinite(slip.incomeTax) &&
+      slip.incomeTax >= 0
+    ) {
+      const cleanTax = round2(slip.incomeTax);
+      cycleTaxUpdates[ck] = cleanTax;
+      slipsWithTaxCount += 1;
+      totalTaxFromSlips = round2(totalTaxFromSlips + cleanTax);
+    }
+
+    if (
+      typeof slip.socialSecurity === 'number' &&
+      Number.isFinite(slip.socialSecurity) &&
+      slip.socialSecurity >= 0
+    ) {
+      const cleanSso = round2(slip.socialSecurity);
+      slipsWithSsoCount += 1;
+      totalSocialSecurityFromSlips = round2(totalSocialSecurityFromSlips + cleanSso);
+    }
+  }
+
+  const ssoAnnualCap = getAnnualSocialSecurityCap(year);
+
+  return {
+    year,
+    rawSlipCount: matching.length,
+    uniqueCycleCount: latestByCycle.size,
+    cycleTaxUpdates,
+    slipsWithTaxCount,
+    totalTaxFromSlips,
+    slipsWithSsoCount,
+    totalSocialSecurityFromSlips,
+    ssoAnnualCap,
+    cappedSocialSecurityFromSlips: round2(Math.min(totalSocialSecurityFromSlips, ssoAnnualCap)),
+  };
+}
+

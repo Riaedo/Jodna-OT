@@ -210,6 +210,10 @@ export interface PaySlipAttachment {
   cycleKey: string; // e.g. '2026-11'
   payPeriodLabel: string; // e.g. 'รอบเดือน พฤศจิกายน 2026'
   imageDataUrl: string; // Compressed JPEG data URL
+  baseSalary?: number; // รายได้ / เงินเดือน (ACT_BASE_SALARY)
+  netIncome?: number; // รายรับสุทธิ (ACT_INCOME)
+  incomeTax?: number; // หักภาษีเงินได้ (INCOME_TAX)
+  socialSecurity?: number; // หักประกันสังคม (INSU_DEDU)
   createdAt: string;
   updatedAt?: string;
   fileName?: string;

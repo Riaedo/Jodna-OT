@@ -234,6 +234,10 @@ export default function App() {
 
   // Cycle taxes state starts clean/empty — never read from unscoped LocalStorage
   const [cycleTaxes, setCycleTaxes] = useState<Record<string, number>>({});
+  const cycleTaxesRef = useRef<Record<string, number>>({});
+  useEffect(() => {
+    cycleTaxesRef.current = cycleTaxes;
+  }, [cycleTaxes]);
 
   // Views ('timesheet' | 'calendar' | 'dashboard')
   const [currentView, setCurrentView] = useState<AppView>('timesheet');
@@ -875,38 +879,55 @@ export default function App() {
     }
   };
 
-  const handleUpdateCycleTax = async (cKey: string, val: number) => {
+  const resolveCycleRecordsForPersistence = (cKey: string): DailyRecord[] => {
+    const existing = allCycleRecords[cKey];
+    if (existing && existing.length > 0) return existing;
+    if (cKey === cycleKey && currentRecords.length > 0) return currentRecords;
+    const match = /^(\d{4})-(\d{2})$/.exec((cKey || '').trim());
+    if (match) {
+      const y = Number(match[1]);
+      const mIdx = Number(match[2]) - 1;
+      if (mIdx >= 0 && mIdx <= 11) {
+        return createCycleRecords(y, mIdx, settings, holidays);
+      }
+    }
+    return [];
+  };
+
+  const handleUpdateCycleTax = async (cKey: string, val: number, silent = false) => {
+    const cleanVal = Math.max(0, Math.round((Number(val) || 0) * 100) / 100);
     const nextTaxes = {
-      ...cycleTaxes,
-      [cKey]: val,
+      ...cycleTaxesRef.current,
+      [cKey]: cleanVal,
     };
+    cycleTaxesRef.current = nextTaxes;
     setCycleTaxes(nextTaxes);
 
     if (user && isCloudLoaded) {
       const sessionUid = user.uid;
       const sessionSeq = authSessionSeqRef.current;
-      const recordsForCycle = allCycleRecords[cKey] || currentRecords;
+      const recordsForCycle = resolveCycleRecordsForPersistence(cKey);
       saveUserLocalCache(sessionUid, { cycleTaxes: nextTaxes });
 
       if (typeof navigator !== 'undefined' && navigator.onLine === false) {
         enqueuePendingSync(sessionUid, 'SAVE_CYCLE', {
           cycleKey: cKey,
           records: recordsForCycle,
-          taxPaid: val,
+          taxPaid: cleanVal,
         });
         setSyncStatus('offline');
-        showToast('บันทึกภาษีแบบออฟไลน์แล้ว (รอซิงค์เมื่อออนไลน์)');
+        if (!silent) showToast('บันทึกภาษีแบบออฟไลน์แล้ว (รอซิงค์เมื่อออนไลน์)');
         return;
       }
 
       setSyncStatus('saving');
       try {
         const writeStartMs = Date.now();
-        await saveUserCycle(sessionUid, cKey, recordsForCycle, val);
+        await saveUserCycle(sessionUid, cKey, recordsForCycle, cleanVal);
         clearPendingSyncForCycle(sessionUid, cKey, writeStartMs);
         if (authSessionSeqRef.current === sessionSeq && auth.currentUser?.uid === sessionUid) {
           setSyncStatus('synced');
-          showToast('อัปเดตภาษีสำเร็จ (บันทึกบนคลาวด์)');
+          if (!silent) showToast('อัปเดตภาษีสำเร็จ (บันทึกบนคลาวด์)');
         }
       } catch (e) {
         console.error(e);
@@ -917,15 +938,94 @@ export default function App() {
           enqueuePendingSync(sessionUid, 'SAVE_CYCLE', {
             cycleKey: cKey,
             records: recordsForCycle,
-            taxPaid: val,
+            taxPaid: cleanVal,
           });
           setSyncStatus('offline');
-          showToast('บันทึกภาษีแบบออฟไลน์แล้ว (รอซิงค์เมื่อออนไลน์)');
+          if (!silent) showToast('บันทึกภาษีแบบออฟไลน์แล้ว (รอซิงค์เมื่อออนไลน์)');
         } else {
           setSyncStatus('error');
-          showToast('เกิดข้อผิดพลาดในการบันทึกภาษีบนคลาวด์');
+          if (!silent) showToast('เกิดข้อผิดพลาดในการบันทึกภาษีบนคลาวด์');
         }
       }
+    } else if (!silent) {
+      showToast('อัปเดตภาษีเรียบร้อยแล้ว');
+    }
+  };
+
+  const handleBatchUpdateCycleTaxes = async (
+    updates: Record<string, number>,
+    options?: { silent?: boolean }
+  ) => {
+    const cleanEntries = Object.entries(updates)
+      .filter(([ck]) => /^\d{4}-\d{2}$/.test(ck.trim()))
+      .map(([ck, v]) => [ck.trim(), Math.max(0, Math.round((Number(v) || 0) * 100) / 100)] as const);
+
+    if (cleanEntries.length === 0) return;
+
+    const cleanUpdates = Object.fromEntries(cleanEntries);
+    const nextTaxes = {
+      ...cycleTaxesRef.current,
+      ...cleanUpdates,
+    };
+    cycleTaxesRef.current = nextTaxes;
+    setCycleTaxes(nextTaxes);
+
+    const silent = Boolean(options?.silent);
+
+    if (user && isCloudLoaded) {
+      const sessionUid = user.uid;
+      const sessionSeq = authSessionSeqRef.current;
+      saveUserLocalCache(sessionUid, { cycleTaxes: nextTaxes });
+
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        cleanEntries.forEach(([cKey, cleanVal]) => {
+          enqueuePendingSync(sessionUid, 'SAVE_CYCLE', {
+            cycleKey: cKey,
+            records: resolveCycleRecordsForPersistence(cKey),
+            taxPaid: cleanVal,
+          });
+        });
+        setSyncStatus('offline');
+        if (!silent) showToast(`ซิงค์ภาษี ${cleanEntries.length} เดือนแบบออฟไลน์แล้ว`);
+        return;
+      }
+
+      setSyncStatus('saving');
+      try {
+        const writeStartMs = Date.now();
+        await Promise.all(
+          cleanEntries.map(async ([cKey, cleanVal]) => {
+            const recordsForCycle = resolveCycleRecordsForPersistence(cKey);
+            await saveUserCycle(sessionUid, cKey, recordsForCycle, cleanVal);
+            clearPendingSyncForCycle(sessionUid, cKey, writeStartMs);
+          })
+        );
+        if (authSessionSeqRef.current === sessionSeq && auth.currentUser?.uid === sessionUid) {
+          setSyncStatus(hasPendingSync(sessionUid) ? 'offline' : 'synced');
+          if (!silent) showToast(`ซิงค์ยอดภาษีหัก ณ ที่จ่าย ${cleanEntries.length} เดือนสำเร็จ`);
+        }
+      } catch (e) {
+        console.error('Failed to batch update cycle taxes:', e);
+        if (authSessionSeqRef.current !== sessionSeq || auth.currentUser?.uid !== sessionUid) {
+          return;
+        }
+        if (isNetworkOrOfflineError(e)) {
+          cleanEntries.forEach(([cKey, cleanVal]) => {
+            enqueuePendingSync(sessionUid, 'SAVE_CYCLE', {
+              cycleKey: cKey,
+              records: resolveCycleRecordsForPersistence(cKey),
+              taxPaid: cleanVal,
+            });
+          });
+          setSyncStatus('offline');
+          if (!silent) showToast(`ซิงค์ภาษี ${cleanEntries.length} เดือนแบบออฟไลน์แล้ว`);
+        } else {
+          setSyncStatus('error');
+          if (!silent) showToast('เกิดข้อผิดพลาดในการซิงค์ภาษีบนคลาวด์');
+        }
+      }
+    } else if (!silent) {
+      showToast(`อัปเดตยอดภาษี ${cleanEntries.length} เดือนเรียบร้อยแล้ว`);
     }
   };
 
@@ -2159,6 +2259,7 @@ export default function App() {
                   currentCycleNetIncome={summary.netIncome}
                   onSavePaySlip={handleSavePaySlip}
                   onDeletePaySlip={handleDeletePaySlip}
+                  onBatchUpdateCycleTaxes={handleBatchUpdateCycleTaxes}
                   onUpdateYearlyTaxDeductions={handleUpdateYearlyTaxDeductions}
                   onNotify={showToast}
                   onNavigateToCycle={(navYear, navMonth) => {

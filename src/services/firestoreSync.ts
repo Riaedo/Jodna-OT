@@ -679,8 +679,20 @@ export async function saveUserPaySlip(userId: string, slip: PaySlipAttachment): 
     if (slip.lastDownloadedAt && String(slip.lastDownloadedAt).trim() !== '') {
       cleanPayload.lastDownloadedAt = String(slip.lastDownloadedAt).trim().slice(0, 40);
     }
+    if (typeof slip.baseSalary === 'number' && Number.isFinite(slip.baseSalary) && slip.baseSalary >= 0) {
+      cleanPayload.baseSalary = Math.round(slip.baseSalary * 100) / 100;
+    }
+    if (typeof slip.netIncome === 'number' && Number.isFinite(slip.netIncome) && slip.netIncome >= 0) {
+      cleanPayload.netIncome = Math.round(slip.netIncome * 100) / 100;
+    }
+    if (typeof slip.incomeTax === 'number' && Number.isFinite(slip.incomeTax) && slip.incomeTax >= 0) {
+      cleanPayload.incomeTax = Math.round(slip.incomeTax * 100) / 100;
+    }
+    if (typeof slip.socialSecurity === 'number' && Number.isFinite(slip.socialSecurity) && slip.socialSecurity >= 0) {
+      cleanPayload.socialSecurity = Math.round(slip.socialSecurity * 100) / 100;
+    }
 
-    await setDoc(docRef, cleanPayload, { merge: true });
+    await setDoc(docRef, cleanPayload);
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
   }

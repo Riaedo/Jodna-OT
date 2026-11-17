@@ -5,9 +5,11 @@ import {
   CheckCircle2,
   HeartHandshake,
   Landmark,
+  Loader2,
   Pencil,
   Plus,
   Receipt,
+  RefreshCw,
   RotateCcw,
   Save,
   ShieldCheck,
@@ -20,6 +22,7 @@ import {
 import {
   CustomTaxStimulusItem,
   DailyRecord,
+  PaySlipAttachment,
   PayrollSettings,
   SalaryIncrementRecord,
   TaxDeductionConfig,
@@ -28,6 +31,7 @@ import { useMoneyVisibility } from '../context/MoneyVisibilityContext';
 import { formatCurrency, getCycleForDate, getLatestCycleAndDate, round2 } from '../utils/calculator';
 import {
   DEFAULT_TAX_DEDUCTION_CONFIG,
+  aggregateYearPaySlipsForTaxSync,
   calculateAnnualTaxPlan,
   normalizeTaxDeductionConfig,
 } from '../utils/taxCalculator';
@@ -35,9 +39,11 @@ import {
 interface TaxCalculatorViewProps {
   allCycleRecords: Record<string, DailyRecord[]>;
   cycleTaxes: Record<string, number>;
+  paySlips?: PaySlipAttachment[];
   settings: PayrollSettings;
   salaryIncrements?: SalaryIncrementRecord[];
-  onUpdateCycleTax?: (cycleKey: string, tax: number) => void;
+  onUpdateCycleTax?: (cycleKey: string, tax: number, silent?: boolean) => Promise<void> | void;
+  onBatchUpdateCycleTaxes?: (updates: Record<string, number>, options?: { silent?: boolean }) => Promise<void> | void;
   onUpdateYearlyTaxDeductions?: (
     year: number,
     config: TaxDeductionConfig,
@@ -69,9 +75,11 @@ function createStimulusId(): string {
 export const TaxCalculatorView: React.FC<TaxCalculatorViewProps> = ({
   allCycleRecords,
   cycleTaxes,
+  paySlips = [],
   settings,
   salaryIncrements = [],
   onUpdateCycleTax,
+  onBatchUpdateCycleTaxes,
   onUpdateYearlyTaxDeductions,
   onNotify,
 }) => {
@@ -102,8 +110,12 @@ export const TaxCalculatorView: React.FC<TaxCalculatorViewProps> = ({
       const y = Number(k.split('-')[0]);
       if (y >= 2020 && y <= 2100) yearSet.add(y);
     });
+    paySlips.forEach((s) => {
+      const y = Number((s.cycleKey || '').split('-')[0]);
+      if (y >= 2020 && y <= 2100) yearSet.add(y);
+    });
     return Array.from(yearSet).sort((a, b) => a - b);
-  }, [allCycleRecords, cycleTaxes, settings.workStartDate, settings.cycleStartDay, settings.cycleEndDay]);
+  }, [allCycleRecords, cycleTaxes, paySlips, settings.workStartDate, settings.cycleStartDay, settings.cycleEndDay]);
 
   const [selectedYear, setSelectedYear] = useState<number>(() => {
     const nowY = new Date().getFullYear();
@@ -212,9 +224,10 @@ export const TaxCalculatorView: React.FC<TaxCalculatorViewProps> = ({
     }
   };
 
-  // Inline withholding tax editor per cycle row
+  // Inline withholding tax editor & PaySlip Vault sync state
   const [editingTaxCycleKey, setEditingTaxCycleKey] = useState<string | null>(null);
   const [editingTaxValue, setEditingTaxValue] = useState<string>('');
+  const [isSyncingFromSlips, setIsSyncingFromSlips] = useState(false);
 
   useEffect(() => {
     if (isMoneyHidden) {
@@ -243,6 +256,90 @@ export const TaxCalculatorView: React.FC<TaxCalculatorViewProps> = ({
       }),
     [selectedYear, allCycleRecords, cycleTaxes, settings, salaryIncrements, draftConfig]
   );
+
+  // Aggregate PaySlip Vault data for selectedYear
+  const yearSlipSync = useMemo(
+    () => aggregateYearPaySlipsForTaxSync(paySlips, selectedYear),
+    [paySlips, selectedYear]
+  );
+
+  const taxOutOfSyncCount = useMemo(() => {
+    return Object.entries(yearSlipSync.cycleTaxUpdates).filter(([ck, slipTax]) => {
+      const currentVal = round2(Math.max(0, Number(cycleTaxes[ck]) || 0));
+      return Math.abs(round2(slipTax - currentVal)) >= 0.01;
+    }).length;
+  }, [yearSlipSync.cycleTaxUpdates, cycleTaxes]);
+
+  const ssoDiffersFromSlips =
+    yearSlipSync.slipsWithSsoCount > 0 &&
+    Math.abs(round2(taxPlan.effectiveSocialSecurity - yearSlipSync.cappedSocialSecurityFromSlips)) >= 0.01;
+
+  const hasAnySlipSyncData =
+    yearSlipSync.slipsWithTaxCount > 0 || yearSlipSync.slipsWithSsoCount > 0;
+
+  const isAllSyncedWithSlips =
+    hasAnySlipSyncData && taxOutOfSyncCount === 0 && !ssoDiffersFromSlips;
+
+  const handleSyncFromPaySlipVault = async () => {
+    if (isSyncingFromSlips) return;
+    if (!hasAnySlipSyncData) {
+      if (onNotify) {
+        onNotify(
+          yearSlipSync.rawSlipCount === 0
+            ? `ไม่พบสลิปเงินเดือนในปี ${selectedYear} ในคลังสลิป`
+            : `พบสลิปปี ${selectedYear} (${yearSlipSync.rawSlipCount} ใบ) แต่ยังไม่มีข้อมูลยอดภาษีหรือประกันสังคมที่บันทึกไว้`
+        );
+      }
+      return;
+    }
+
+    setIsSyncingFromSlips(true);
+    try {
+      const taxEntries = Object.entries(yearSlipSync.cycleTaxUpdates);
+      if (taxEntries.length > 0) {
+        if (onBatchUpdateCycleTaxes) {
+          await onBatchUpdateCycleTaxes(yearSlipSync.cycleTaxUpdates, { silent: true });
+        } else if (onUpdateCycleTax) {
+          for (const [ck, taxVal] of taxEntries) {
+            await onUpdateCycleTax(ck, taxVal, true);
+          }
+        }
+      }
+
+      if (yearSlipSync.slipsWithSsoCount > 0) {
+        const nextCfg: TaxDeductionConfig = {
+          ...draftConfig,
+          socialSecurityOverride: yearSlipSync.cappedSocialSecurityFromSlips,
+        };
+        setDraftConfig(nextCfg);
+        setHasUnsavedChanges(false);
+        if (onUpdateYearlyTaxDeductions) {
+          await onUpdateYearlyTaxDeductions(selectedYear, nextCfg, true);
+        }
+      }
+
+      if (onNotify) {
+        const parts: string[] = [];
+        if (yearSlipSync.slipsWithTaxCount > 0) {
+          parts.push(
+            `ภาษีหัก ณ ที่จ่าย ${yearSlipSync.slipsWithTaxCount} เดือน (${formatMoney(yearSlipSync.totalTaxFromSlips)})`
+          );
+        }
+        if (yearSlipSync.slipsWithSsoCount > 0) {
+          parts.push(
+            `ประกันสังคมสะสม ${formatMoney(yearSlipSync.cappedSocialSecurityFromSlips)}`
+          );
+        }
+        onNotify(`ซิงค์ข้อมูลจากคลังสลิปปี ${selectedYear} สำเร็จ: ${parts.join(' · ')}`);
+      }
+    } catch (err: any) {
+      if (onNotify) {
+        onNotify(err?.message || 'เกิดข้อผิดพลาดในการซิงค์ข้อมูลจากคลังสลิป');
+      }
+    } finally {
+      setIsSyncingFromSlips(false);
+    }
+  };
 
   const isSsoOverridden =
     draftConfig.socialSecurityOverride !== null &&
@@ -305,6 +402,31 @@ export const TaxCalculatorView: React.FC<TaxCalculatorViewProps> = ({
               ))}
             </select>
           </div>
+
+          <button
+            type="button"
+            disabled={isSyncingFromSlips}
+            onClick={handleSyncFromPaySlipVault}
+            title="ดึงยอดภาษีหัก ณ ที่จ่าย (INCOME_TAX) และประกันสังคม (INSU_DEDU) จากคลังสลิปเงินเดือนของปีนี้มาอัปเดตอัตโนมัติ"
+            className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-60 ${
+              isAllSyncedWithSlips
+                ? 'border border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/50'
+                : 'border border-cyan-300 dark:border-cyan-700 bg-cyan-50 dark:bg-cyan-950/50 hover:bg-cyan-100 dark:hover:bg-cyan-900/60 text-cyan-800 dark:text-cyan-200'
+            }`}
+          >
+            {isSyncingFromSlips ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : isAllSyncedWithSlips ? (
+              <CheckCircle2 className="w-4 h-4" />
+            ) : (
+              <RefreshCw className="w-4 h-4" />
+            )}
+            <span>
+              {isSyncingFromSlips
+                ? 'กำลังซิงค์จากคลังสลิป...'
+                : 'ดึงยอดภาษีและประกันสังคมจากคลังสลิปทั้งปี'}
+            </span>
+          </button>
 
           <button
             type="button"
@@ -777,7 +899,7 @@ export const TaxCalculatorView: React.FC<TaxCalculatorViewProps> = ({
                     htmlFor="tax-sso-input"
                     className="text-xs font-medium text-slate-700 dark:text-slate-300"
                   >
-                    ประกันสังคมสะสมทั้งปี (สูงสุด 9,000)
+                    ประกันสังคมสะสมทั้งปี (สูงสุด {taxPlan.ssoAnnualCap.toLocaleString('en-US')})
                   </label>
                   {isSsoOverridden ? (
                     <button
@@ -797,7 +919,7 @@ export const TaxCalculatorView: React.FC<TaxCalculatorViewProps> = ({
                   id="tax-sso-input"
                   type="number"
                   min="0"
-                  max="9000"
+                  max={taxPlan.ssoAnnualCap}
                   step="any"
                   value={
                     isSsoOverridden
@@ -813,10 +935,37 @@ export const TaxCalculatorView: React.FC<TaxCalculatorViewProps> = ({
                   }
                   className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-sm font-semibold font-mono tabular-nums text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
                 />
-                {totalAutoSsoSum > 9000 && !isSsoOverridden && (
+                {totalAutoSsoSum > taxPlan.ssoAnnualCap && !isSsoOverridden && (
                   <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-                    ยอดหักจริง {formatMoney(totalAutoSsoSum)} (จำกัดสิทธิ์ลดหย่อน 9,000 บาท)
+                    ยอดหักจริง {formatMoney(totalAutoSsoSum)} (จำกัดสิทธิ์ลดหย่อน{' '}
+                    {taxPlan.ssoAnnualCap.toLocaleString('en-US')} บาท)
                   </p>
+                )}
+                {yearSlipSync.slipsWithSsoCount > 0 && (
+                  <div className="mt-1 flex flex-wrap items-center justify-between gap-1 text-[11px]">
+                    <span className="text-slate-500 dark:text-slate-400 font-mono tabular-nums">
+                      ยอดปกส.จากสลิป ({yearSlipSync.slipsWithSsoCount} เดือน):{' '}
+                      {formatMoney(yearSlipSync.totalSocialSecurityFromSlips)}
+                    </span>
+                    {ssoDiffersFromSlips ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updateDraft({
+                            socialSecurityOverride: yearSlipSync.cappedSocialSecurityFromSlips,
+                          })
+                        }
+                        className="font-semibold text-cyan-600 dark:text-cyan-400 hover:underline cursor-pointer"
+                      >
+                        ใช้ยอดสลิป ({formatMoney(yearSlipSync.cappedSocialSecurityFromSlips)})
+                      </button>
+                    ) : (
+                      <span className="text-emerald-600 dark:text-emerald-400 font-medium inline-flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3" />
+                        <span>ตรงกับสลิปแล้ว</span>
+                      </span>
+                    )}
+                  </div>
                 )}
               </div>
 
@@ -1430,21 +1579,38 @@ export const TaxCalculatorView: React.FC<TaxCalculatorViewProps> = ({
 
       {/* 5. 12-Month Gross Income & Withholding Tax Log Table */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
-        <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
           <div>
             <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
               <Receipt className="w-4 h-4 text-rose-500 shrink-0" />
               <span>บันทึกรายได้และภาษีหัก ณ ที่จ่ายทั้ง 12 เดือน (ปี {selectedYear})</span>
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              คลิกที่ตัวเลขในคอลัมน์ &ldquo;ภาษีหัก ณ ที่จ่าย&rdquo; เพื่อบันทึกหรือแก้ไขภาษีที่ถูกหักจริงในแต่ละเดือน
+              คลิกที่ตัวเลขในคอลัมน์ &ldquo;ภาษีหัก ณ ที่จ่าย&rdquo; เพื่อแก้ไขรายเดือน หรือกดซิงค์จากคลังสลิปเงินเดือนทั้งปีอัตโนมัติ
             </p>
           </div>
-          <div className="text-xs text-slate-500 dark:text-slate-400 font-mono tabular-nums">
-            รวมภาษีหัก ณ ที่จ่าย:{' '}
-            <strong className="text-rose-600 dark:text-rose-400">
-              {formatMoney(taxPlan.totalWithholdingTaxPaid)}
-            </strong>
+          <div className="flex flex-wrap items-center gap-3 shrink-0">
+            <button
+              type="button"
+              disabled={isSyncingFromSlips}
+              onClick={handleSyncFromPaySlipVault}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-cyan-300 dark:border-cyan-700 bg-cyan-50 dark:bg-cyan-950/50 hover:bg-cyan-100 dark:hover:bg-cyan-900/60 text-cyan-800 dark:text-cyan-200 text-xs font-semibold transition-colors whitespace-nowrap cursor-pointer disabled:opacity-60"
+            >
+              {isSyncingFromSlips ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <RefreshCw className="w-3.5 h-3.5" />
+              )}
+              <span>
+                ซิงค์จากคลังสลิป ({yearSlipSync.uniqueCycleCount} เดือน)
+              </span>
+            </button>
+            <div className="text-xs text-slate-500 dark:text-slate-400 font-mono tabular-nums">
+              รวมภาษีหัก ณ ที่จ่าย:{' '}
+              <strong className="text-rose-600 dark:text-rose-400">
+                {formatMoney(taxPlan.totalWithholdingTaxPaid)}
+              </strong>
+            </div>
           </div>
         </div>
 

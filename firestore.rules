@@ -91,7 +91,8 @@ service cloud.firestore {
         data.keys().hasOnly([
           'id', 'userId', 'cycleKey', 'payPeriodLabel', 'imageDataUrl', 'createdAt',
           'updatedAt', 'fileName', 'mimeType', 'fileSizeBytes', 'downloadCount', 'lastDownloadedAt',
-          'paymentDate', 'bankName', 'netAmount', 'grossIncome', 'totalDeductions', 'earnings', 'deductions', 'ocrExtracted', 'note'
+          'paymentDate', 'bankName', 'netAmount', 'grossIncome', 'totalDeductions', 'earnings', 'deductions', 'ocrExtracted', 'note',
+          'baseSalary', 'netIncome', 'incomeTax', 'socialSecurity'
         ]) &&
         data.userId == userId &&
         data.id is string &&
@@ -123,7 +124,11 @@ service cloud.firestore {
         (!('earnings' in data) || data.earnings is map) &&
         (!('deductions' in data) || data.deductions is map) &&
         (!('ocrExtracted' in data) || data.ocrExtracted is bool) &&
-        (!('note' in data) || (data.note is string && data.note.size() <= 500));
+        (!('note' in data) || (data.note is string && data.note.size() <= 500)) &&
+        (!('baseSalary' in data) || (data.baseSalary is number && data.baseSalary >= 0)) &&
+        (!('netIncome' in data) || (data.netIncome is number && data.netIncome >= 0)) &&
+        (!('incomeTax' in data) || (data.incomeTax is number && data.incomeTax >= 0)) &&
+        (!('socialSecurity' in data) || (data.socialSecurity is number && data.socialSecurity >= 0));
     }
 
     // User document
